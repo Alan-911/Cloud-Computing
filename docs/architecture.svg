@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="640" viewBox="0 0 1500 640" font-family="Arial, Helvetica, sans-serif">
+<rect width="1500" height="640" fill="#FFFFFF"/>
+<defs>
+<marker id="a" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L10,5 L0,10 z" fill="#6B7280"/></marker>
+<marker id="ar" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse"><path d="M0,0 L10,5 L0,10 z" fill="#C9484A"/></marker>
+</defs>
+<text x="750.0" y="38" font-size="21" fill="#1F2A5C" text-anchor="middle" font-weight="bold">Assignment 2 architecture: EC2, Docker Compose, reverse proxy</text>
+<rect x="40" y="150" width="180" height="110" rx="10" fill="#F3F5FA" stroke="#1F2A5C" stroke-width="2"/>
+<text x="130" y="192" font-size="16" fill="#1B1F2E" text-anchor="middle" font-weight="bold">Client</text>
+<text x="130" y="214" font-size="12" fill="#6B7280" text-anchor="middle">your laptop</text>
+<text x="130" y="232" font-size="12" fill="#6B7280" text-anchor="middle">curl / browser</text>
+<rect x="300" y="95" width="1020" height="400" rx="14" fill="#FBFCFE" stroke="#1F2A5C" stroke-width="2"/>
+<text x="318" y="120" font-size="13" fill="#1F2A5C" text-anchor="start" font-weight="bold">EC2 instance  ·  t3.micro  ·  Amazon Linux 2023  ·  18.119.112.99</text>
+<rect x="330" y="140" width="960" height="330" rx="12" fill="#FFFFFF" stroke="#C9484A" stroke-width="2" stroke-dasharray="7,5"/>
+<text x="348" y="164" font-size="12" fill="#C9484A" text-anchor="start" font-weight="bold">Security group</text>
+<text x="348" y="182" font-size="11.5" fill="#C9484A" text-anchor="start">inbound: 22 (your IP), 80 (world)</text>
+<rect x="560" y="205" width="700" height="240" rx="12" fill="#F3F5FA" stroke="#2E8B8B" stroke-width="2" stroke-dasharray="6,4"/>
+<text x="910" y="230" font-size="12" fill="#2E8B8B" text-anchor="middle" font-weight="bold">Docker Compose network  (service-name DNS)</text>
+<rect x="600" y="250" width="260" height="110" rx="10" fill="#FFFFFF" stroke="#1F2A5C" stroke-width="2"/>
+<text x="730" y="282" font-size="16" fill="#1B1F2E" text-anchor="middle" font-weight="bold">nginx</text>
+<text x="730" y="303" font-size="11.5" fill="#6B7280" text-anchor="middle">nginx:1.27-alpine</text>
+<text x="730" y="321" font-size="11.5" fill="#6B7280" text-anchor="middle">publishes 80:80</text>
+<text x="730" y="339" font-size="11.5" fill="#6B7280" text-anchor="middle">proxy_pass /api/</text>
+<rect x="960" y="250" width="260" height="110" rx="10" fill="#FFFFFF" stroke="#E8A33D" stroke-width="2"/>
+<text x="1090" y="278" font-size="16" fill="#1B1F2E" text-anchor="middle" font-weight="bold">api</text>
+<text x="1090" y="298" font-size="11.5" fill="#6B7280" text-anchor="middle">FastAPI + uvicorn</text>
+<text x="1090" y="316" font-size="11.5" fill="#6B7280" text-anchor="middle">expose 8000 only</text>
+<text x="1090" y="334" font-size="11.5" fill="#6B7280" text-anchor="middle">USER appuser (10001)</text>
+<rect x="960" y="382" width="260" height="56" rx="10" fill="#F3F5FA" stroke="#3C9D6B" stroke-width="2"/>
+<text x="1090" y="405" font-size="13" fill="#3C9D6B" text-anchor="middle" font-weight="bold">named volume: appdata</text>
+<text x="1090" y="423" font-size="11" fill="#6B7280" text-anchor="middle">mounted at /data  ·  app.db</text>
+<line x1="224" y1="205" x2="594" y2="300" stroke="#6B7280" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="400" y="243" font-size="12.5" fill="#1B1F2E" text-anchor="middle" font-weight="bold">HTTP :80</text>
+<text x="400" y="260" font-size="11" fill="#6B7280" text-anchor="middle" font-style="italic">the only way in</text>
+<line x1="864" y1="305" x2="954" y2="305" stroke="#6B7280" stroke-width="2.5" marker-end="url(#a)"/>
+<text x="909" y="296" font-size="11.5" fill="#1B1F2E" text-anchor="middle" font-weight="bold">api:8000</text>
+<line x1="1090" y1="364" x2="1090" y2="378" stroke="#6B7280" stroke-width="2.5" marker-end="url(#a)"/>
+<path d="M224,235 C380,470 760,540 1086,470" fill="none" stroke="#C9484A" stroke-width="2.5" stroke-dasharray="7,5" marker-end="url(#ar)"/>
+<text x="650" y="540" font-size="13" fill="#C9484A" text-anchor="middle" font-weight="bold">direct request to :8000 is dropped by the security group  ·  curl times out</text>
+<line x1="618" y1="446" x2="662" y2="490" stroke="#C9484A" stroke-width="4.5"/>
+<line x1="662" y1="446" x2="618" y2="490" stroke="#C9484A" stroke-width="4.5"/>
+<text x="750.0" y="600" font-size="12.5" fill="#6B7280" text-anchor="middle" font-style="italic">Only the reverse proxy is published. The application container is reachable only on the internal Compose network,</text>
+<text x="750.0" y="620" font-size="12.5" fill="#6B7280" text-anchor="middle" font-style="italic">and its data lives in a named volume that survives docker compose down followed by up.</text>
+</svg>

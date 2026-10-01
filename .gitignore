@@ -1,0 +1,3 @@
+# build intermediates for the report
+docs/_*.jpg
+docs/report.html
