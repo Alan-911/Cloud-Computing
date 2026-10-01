@@ -12,8 +12,13 @@ services:
   nginx:
     image: nginx:1.27-alpine
     container_name: fastapi_nginx
+    # Waits for the API's HEALTHCHECK to pass, not merely for the container to
+    # be created, so nginx never starts proxying to a socket that is not up yet.
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    # Only the proxy is published to the host. The api service uses `expose`,
+    # so port 8000 is reachable on the internal compose network and nowhere else.
     ports:
       - "80:80"
     volumes:

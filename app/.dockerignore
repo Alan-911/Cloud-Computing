@@ -1,0 +1,23 @@
+# The build context is ./app, so this file must live in ./app to take effect.
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Never bake a local database into the image. /data comes from the volume.
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+.git/
+.gitignore
+.env
+*.log
+.DS_Store
+Thumbs.db
