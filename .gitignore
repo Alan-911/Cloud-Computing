@@ -1,3 +1,6 @@
-# build intermediates for the report
-docs/_*.jpg
+# build intermediates
+docs/_*
 docs/report.html
+docs/shot-*.png
+node_modules/
+package-lock.json
