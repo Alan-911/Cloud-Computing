@@ -136,9 +136,9 @@ function term(s, lines, x, y, w, h, fs = 10) {
     const s = pres.addSlide();
     s.background = { color: WHITE };
     title(s, "Containers running, only port 80 published");
-    s.addImage({ path: "docs/shot-status.png", x: 0.8, y: 1.1, w: 8.4, h: 8.4 * (785 / 1600) });
+    s.addImage({ path: "docs/shot-status.png", x: 0.5, y: 1.35, w: 9.0, h: 9.0 * (511 / 1600) });
     footer(s, 6);
-    s.addNotes("Backup in case the live demo fails. api shows 8000/tcp with no host binding; nginx shows 0.0.0.0:80->80/tcp.");
+    s.addNotes("Backup in case the live demo fails. ssh da510 connects, api shows 8000/tcp with no host binding, nginx shows 0.0.0.0:80->80/tcp.");
   }
 
   // 7 — Evidence: proof

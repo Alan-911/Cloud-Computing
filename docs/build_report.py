@@ -130,12 +130,11 @@ proxying to a socket that is not yet accepting connections.</p>
 </figure>
 
 <figure>
-  <img src="{img('04-ssh-and-persistence.png')}" alt="SSH session, container status and restart">
+  <img src="{img('06-status-clean.png')}" alt="SSH session and container status">
   <figcaption><b>Figure 2.</b> Connected to the instance. <code>docker compose ps</code> shows both
   containers up, the api healthy and publishing <code>8000/tcp</code> internally only, while nginx
-  publishes <code>0.0.0.0:80-&gt;80/tcp</code>. Below it the persistence test begins: the containers
-  are destroyed with <code>down</code> and recreated with <code>up -d</code>.
-  <b>Requirements 1 and 3.</b></figcaption>
+  publishes <code>0.0.0.0:80-&gt;80/tcp</code>. The api port exists on the Compose network and has no
+  host binding at all. <b>Requirements 1 and 3.</b></figcaption>
 </figure>
 
 <figure>
