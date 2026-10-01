@@ -43,9 +43,25 @@ sudo curl -fsSL \
     -o "${plugin_dir}/docker-compose"
 sudo chmod +x "${plugin_dir}/docker-compose"
 
+# Current Compose builds images through buildx, and the Amazon Linux docker
+# package does not ship that plugin. Without it `docker compose up --build`
+# stops with "compose build requires buildx 0.17.0 or later".
+say "Installing the Docker buildx plugin"
+case "$compose_arch" in
+    x86_64)  buildx_arch="amd64" ;;
+    aarch64) buildx_arch="arm64" ;;
+esac
+buildx_ver="$(curl -fsSL https://api.github.com/repos/docker/buildx/releases/latest \
+    | sed -n 's/.*"tag_name": *"\([^"]*\)".*/\1/p' | head -1)"
+sudo curl -fsSL \
+    "https://github.com/docker/buildx/releases/download/${buildx_ver}/buildx-${buildx_ver}.linux-${buildx_arch}" \
+    -o "${plugin_dir}/docker-buildx"
+sudo chmod +x "${plugin_dir}/docker-buildx"
+
 say "Versions"
 docker --version
 sudo docker compose version
+sudo docker buildx version
 
 say "Fetching the repository"
 if [ -d "${APP_DIR}/.git" ]; then
