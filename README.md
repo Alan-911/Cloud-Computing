@@ -125,11 +125,3 @@ Verify from your own machine, not from inside the instance:
 ```bash
 curl -i http://<EC2_PUBLIC_IP>/api/health
 ```
-
-## What the grader will check
-
-1. Both containers running. Show with `docker compose ps`.
-2. `GET /api/health`, `POST /api/items`, `GET /api/items` all succeed through port 80.
-3. Data survives `docker compose down` followed by `docker compose up -d`.
-4. Port 8000 is not reachable from outside. Show that `docker compose ps` publishes only
-   80, and that a direct request to 8000 is refused.
