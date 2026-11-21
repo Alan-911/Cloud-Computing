@@ -22,7 +22,7 @@ say "Updating packages"
 sudo dnf update -y
 
 say "Installing docker and git"
-sudo dnf install -y docker git
+sudo dnf install -y docker git openssl
 
 say "Enabling and starting docker"
 sudo systemctl enable --now docker
@@ -70,9 +70,17 @@ else
     git clone "$REPO_URL" "$APP_DIR"
 fi
 
-say "Building and starting the stack"
 cd "$APP_DIR"
-sudo docker compose up -d --build
+if [ ! -f .env ]; then
+    say "Creating .env with a generated database password"
+    cp .env.example .env
+    sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 24)/" .env
+    sed -i "s/^APP_ENVIRONMENT=.*/APP_ENVIRONMENT=production/" .env
+    chmod 600 .env
+fi
+
+say "Building and starting the stack"
+sudo docker compose up -d --build --wait --wait-timeout 180
 
 say "Waiting for the service to answer on port 80"
 for i in $(seq 1 60); do
@@ -93,10 +101,7 @@ say "Container status"
 sudo docker compose ps
 
 say "Smoke test through the proxy"
-printf 'health : '; curl -s http://localhost/api/health; echo
-printf 'post   : '; curl -s -X POST http://localhost/api/v1/items \
-    -H 'Content-Type: application/json' -d "{\"name\":\"ec2-smoke-test-$(date +%s)\"}"; echo
-printf 'items  : '; curl -s http://localhost/api/v1/items; echo
+bash scripts/smoke-test.sh http://localhost
 
 say "Done"
 echo "Public URL: http://$(curl -fsS --max-time 5 http://169.254.169.254/latest/meta-data/public-ipv4 \

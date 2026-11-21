@@ -1,5 +1,8 @@
 # Cloud-Native Backend Infrastructure
 
+[![CI](https://github.com/Alan-911/Cloud-Computing/actions/workflows/release.yml/badge.svg?branch=develop)](https://github.com/Alan-911/Cloud-Computing/actions/workflows/release.yml)
+[![Security](https://github.com/Alan-911/Cloud-Computing/actions/workflows/security.yml/badge.svg?branch=develop)](https://github.com/Alan-911/Cloud-Computing/actions/workflows/security.yml)
+
 A FastAPI items service on PostgreSQL behind an Nginx reverse proxy, being
 developed in phases from a graded cloud-computing assignment into a
 production-oriented backend: tested, containerized, automated, observable and secure.
@@ -7,6 +10,7 @@ production-oriented backend: tested, containerized, automated, observable and se
 - **Roadmap and status:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 - **Requirements and architecture:** [`docs/architecture/requirements.md`](docs/architecture/requirements.md)
 - **Database runbook (migrations, backup, restore):** [`docs/runbooks/database.md`](docs/runbooks/database.md)
+- **CI/CD runbook (pipeline, releases, deploy, rollback):** [`docs/runbooks/ci-cd.md`](docs/runbooks/ci-cd.md)
 - **Original academic submission:** tag `v1.0-academic`, files in [`docs/academic-submission/`](docs/academic-submission/NOTE.md)
 
 ```
@@ -24,7 +28,8 @@ client ──▶ :80 nginx ──▶ api:8000 FastAPI ──▶ db:5432 PostgreS
 | 01 Backend engineering | Done |
 | 02 Database engineering | Done |
 | 03 Automated testing | Done |
-| 04–10 | Planned |
+| 04 CI/CD | Done (branch protection pending) |
+| 05–10 | Planned |
 
 ## API
 
@@ -67,7 +72,8 @@ app/
   Dockerfile    built from the repo root
 migrations/     Alembic migrations (the only source of the schema)
 tests/          unit and integration tests
-scripts/        EC2 setup, database backup and restore
+scripts/        tests, smoke test, EC2 setup, database backup and restore
+.github/        CI, security, release and deploy workflows; Dependabot
 nginx/          reverse proxy config
 docs/           roadmap, architecture, runbooks, academic submission
 ```

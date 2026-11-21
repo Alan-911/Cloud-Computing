@@ -1,0 +1,86 @@
+name: Deploy
+
+# Manual deploy of an already-published image to the EC2 host over SSH.
+# Pick the branch or tag in "Use workflow from"; the image built from that exact
+# commit (sha-<short>) is deployed, with the Compose files from the same commit.
+# To roll back, run this workflow again from the earlier commit or tag.
+#
+# Setup (once), in Settings -> Environments -> production:
+#   secrets   EC2_HOST, EC2_USER, EC2_SSH_KEY (private key for that user)
+#   variables APP_URL (public base URL, e.g. http://203.0.113.10)
+#   optional  required reviewers, to make every deploy need approval
+# The host needs Docker, the Compose plugin, a clone of this repository at
+# ~/Cloud-Computing and a .env with POSTGRES_PASSWORD (scripts/ec2-setup.sh does this).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: production
+      url: ${{ vars.APP_URL }}
+    env:
+      IMAGE: ghcr.io/alan-911/cloud-computing
+    steps:
+      - name: Check configuration
+        env:
+          HOST: ${{ secrets.EC2_HOST }}
+          USER: ${{ secrets.EC2_USER }}
+          KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          missing=()
+          [ -n "$HOST" ] || missing+=(EC2_HOST)
+          [ -n "$USER" ] || missing+=(EC2_USER)
+          [ -n "$KEY" ]  || missing+=(EC2_SSH_KEY)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing production secrets: ${missing[*]}"; exit 1
+          fi
+          echo "IMAGE_TAG=sha-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: The image for this commit exists (built and tested by Release)
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker buildx imagetools inspect "${IMAGE}:${IMAGE_TAG}" > /dev/null || {
+            echo "::error::${IMAGE}:${IMAGE_TAG} not found. Wait for the Release workflow on this commit."
+            exit 1
+          }
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        env:
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
+          COMMIT: ${{ github.sha }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: IMAGE_TAG,COMMIT
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+            cd ~/Cloud-Computing
+            git fetch --quiet origin
+            git checkout --quiet --detach "$COMMIT"
+            export IMAGE_TAG
+            compose="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
+            $compose pull migrate api
+            $compose up -d --wait --wait-timeout 120
+            $compose ps
+            bash scripts/smoke-test.sh http://localhost
+            echo "$IMAGE_TAG $COMMIT $(date -u +%FT%TZ)" >> ~/deploy-history.log
+
+      - name: Public health check
+        if: vars.APP_URL != ''
+        run: |
+          curl -fsS -m 10 "${{ vars.APP_URL }}/api/health"
+          echo "Deployed ${IMAGE}:${IMAGE_TAG}" >> "$GITHUB_STEP_SUMMARY"

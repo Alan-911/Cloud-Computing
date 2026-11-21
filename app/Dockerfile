@@ -6,20 +6,32 @@
 # Slim base: small image, no compiler toolchain shipped to production.
 FROM python:3.12-slim
 
-ARG APP_VERSION=1.2.0
+# Set by the release workflow from the Git tag; local builds report the code default.
+ARG APP_VERSION=1.3.0-local
+ARG APP_REVISION=unknown
 LABEL org.opencontainers.image.title="cloud-native-items-api" \
       org.opencontainers.image.version=$APP_VERSION \
+      org.opencontainers.image.revision=$APP_REVISION \
       org.opencontainers.image.source="https://github.com/Alan-911/Cloud-Computing"
 
 # PYTHONDONTWRITEBYTECODE keeps .pyc files out of the image.
 # PYTHONUNBUFFERED makes logs appear immediately in `docker compose logs`.
+# APP_VERSION makes /api/health report the version of the running image.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    APP_ENVIRONMENT=production
+    APP_ENVIRONMENT=production \
+    APP_VERSION=$APP_VERSION
 
 WORKDIR /srv
+
+# Apply Debian security fixes released after the base image was built (e.g. a
+# zlib CVE flagged by the image scan). The Trivy gate in security.yml catches
+# any fixable HIGH/CRITICAL package this misses.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 
 # Dependencies first so this layer stays cached when only code changes.
 COPY app/requirements.txt ./requirements.txt

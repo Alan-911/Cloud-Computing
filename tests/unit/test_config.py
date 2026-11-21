@@ -14,3 +14,13 @@ def test_env_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_docs_hidden_in_production() -> None:
     assert Settings(environment="production", _env_file=None).docs_enabled is False
     assert Settings(environment="production", debug=True, _env_file=None).docs_enabled is True
+
+
+def test_default_version_matches_pyproject(monkeypatch: pytest.MonkeyPatch) -> None:
+    import tomllib
+    from pathlib import Path
+
+    monkeypatch.delenv("APP_VERSION", raising=False)
+    pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+    expected = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]["version"]
+    assert Settings(_env_file=None).version == expected

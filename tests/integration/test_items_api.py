@@ -15,7 +15,12 @@ def create(client: TestClient, name: str, description: str | None = None) -> dic
 def test_health(client: TestClient) -> None:
     r = client.get("/api/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok", "version": "1.2.0", "environment": "test", "database": "ok"}
+    assert r.json() == {
+        "status": "ok",
+        "version": client.app.version,
+        "environment": "test",
+        "database": "ok",
+    }
 
 
 def test_crud_round_trip(client: TestClient) -> None:

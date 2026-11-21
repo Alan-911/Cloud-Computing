@@ -10,7 +10,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="APP_", env_file=".env", extra="ignore")
 
     name: str = "Cloud-Native Items API"
-    version: str = "1.2.0"
+    # Overridden in images by APP_VERSION (set from the release tag at build time).
+    version: str = "1.3.0"
     environment: Literal["development", "test", "staging", "production"] = "development"
     debug: bool = False
 

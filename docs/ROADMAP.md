@@ -82,9 +82,20 @@ acceptance criteria, test evidence, documentation updates.
 - With the gate raised to 100%, the run exits 1, so the gate is enforced.
 
 ### Phase 04 — CI/CD
-`ci.yml` (lint, test, build), `security.yml` (dependency and image scan),
-image push to GHCR with version tags, branch protection, `deploy.yml`.
+- [x] `CBE-P04-001` `ci.yml`: lint, tests on SQLite and PostgreSQL, image build with a Compose smoke test (port isolation, persistence across restart)
+- [x] `CBE-P04-002` `security.yml`: pip-audit, plus Trivy scans of the repo (vulnerabilities, secrets, misconfiguration) and the image. Fails on fixable HIGH/CRITICAL findings, reports to the Security tab, and runs weekly.
+- [x] `CBE-P04-003` `release.yml`: only after CI passes, publishes multi-arch images to GHCR with branch, SHA and semver tags, an SBOM and signed provenance. Rejects a tag that doesn't match the code version.
+- [ ] `CBE-P04-004` Branch protection on `main` and `develop` *(settings in [runbook](runbooks/ci-cd.md); needs owner approval)*
+- [x] `CBE-P04-005` `deploy.yml`: manual, through the `production` environment. Deploys the image for the selected commit over SSH, runs the smoke test, and rolls back by redeploying an earlier ref. Also adds Dependabot and a PR template.
+
 **Acceptance:** every PR runs the required checks; images are reproducible and tagged.
+
+**Evidence (local, 2026-11-21):**
+- actionlint is clean on all workflows.
+- `pip-audit` and Trivy (image and repo) are clean after the image build applies Debian security updates. The first image scan caught CVE-2026-85091 in zlib, which the update fixed.
+- `docker compose up --wait` with the one-shot migrate service works, and `scripts/smoke-test.sh` passes 10/10.
+- The production override refuses to run without `IMAGE_TAG`.
+- CI on GitHub: *pending the first push.*
 
 ### Phase 05 — Infrastructure as Code
 Terraform for VPC, security groups, EC2 (or ECS), remote state, `plan` in CI.
