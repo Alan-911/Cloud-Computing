@@ -67,9 +67,19 @@ acceptance criteria, test evidence, documentation updates.
 - From the host, port 8000 and port 5432 were both unreachable.
 
 ### Phase 03 — Automated testing
-Unit tests for services, integration tests against PostgreSQL, coverage
-reporting, test fixtures, `ruff` lint.
+- [x] `CBE-P03-001` Unit tests with no database: schemas, error envelope, config, engine options
+- [x] `CBE-P03-002` Integration tests: the service layer, the HTTP API, migrations, and concurrent duplicate creates
+- [x] `CBE-P03-003` The same suite runs on SQLite or on PostgreSQL (`TEST_DATABASE_URL`)
+- [x] `CBE-P03-004` Shared fixtures (`clean_db`, `db_session`, `item_factory`), branch coverage, an 85% gate, and any new warning fails the run
+- [x] `CBE-P03-005` One command, `scripts/test.sh [--postgres]`, runs ruff, the format check, and pytest with coverage
+
 **Acceptance:** coverage ≥ 85%; suite runs with one command.
+
+**Evidence (2026-11-21):**
+- `scripts/test.sh` passed 62/62 on SQLite.
+- `scripts/test.sh --postgres` passed 62/62 on PostgreSQL 17.
+- Branch coverage was 99.67%, with no warnings.
+- With the gate raised to 100%, the run exits 1, so the gate is enforced.
 
 ### Phase 04 — CI/CD
 `ci.yml` (lint, test, build), `security.yml` (dependency and image scan),

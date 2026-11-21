@@ -36,6 +36,9 @@ def test_single_head(database_url: str) -> None:
     assert len(heads) == 1, f"Multiple migration heads: {heads}"
 
 
+# SQLite cannot reflect the lower(name) expression index, so it is only compared
+# on PostgreSQL. Every other column, constraint and index is compared on both.
+@pytest.mark.filterwarnings("ignore:.*expression-based index.*")
 def test_models_match_migrations(database_url: str) -> None:
     engine = create_engine(database_url)
     with engine.connect() as conn:

@@ -23,7 +23,8 @@ client ──▶ :80 nginx ──▶ api:8000 FastAPI ──▶ db:5432 PostgreS
 | 00 Repository preparation | Done (project board pending) |
 | 01 Backend engineering | Done |
 | 02 Database engineering | Done |
-| 03–10 | Planned |
+| 03 Automated testing | Done |
+| 04–10 | Planned |
 
 ## API
 
@@ -100,19 +101,23 @@ uvicorn app.main:app --reload            # http://127.0.0.1:8000/api/docs
 
 ## Tests
 
-```bash
-pytest --cov                             # SQLite, real migrations
-ruff check . && ruff format --check .
-```
-
-The same suite runs against PostgreSQL when `TEST_DATABASE_URL` is set. The
-target database is wiped, so use a throwaway one:
+One command runs lint, the format check, and the suite with coverage
+(run it from Git Bash on Windows):
 
 ```bash
-docker run -d --rm --name items_testdb -e POSTGRES_PASSWORD=test -e POSTGRES_DB=test -p 127.0.0.1:55432:5432 postgres:17-alpine
-TEST_DATABASE_URL=postgresql+psycopg://postgres:test@127.0.0.1:55432/test pytest
-docker stop items_testdb
+scripts/test.sh              # SQLite, no Docker needed
+scripts/test.sh --postgres   # starts and removes a throwaway PostgreSQL 17 container
+scripts/test.sh -- -k service   # extra arguments go to pytest
 ```
+
+| Folder | What it covers | Needs a database |
+|---|---|---|
+| `tests/unit/` | Validation rules, the error envelope, config, engine and pool options | No |
+| `tests/integration/` | The service layer, every HTTP endpoint, migrations in both directions, model/migration drift, concurrent duplicate creates | Yes |
+
+The schema is always built by the real migrations. The run fails if branch
+coverage drops below 85% or if any test raises a warning. To point at your own
+database, set `TEST_DATABASE_URL`. That database is wiped, so only use a throwaway one.
 
 ## Breaking changes from `v1.0-academic`
 
