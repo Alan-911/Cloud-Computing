@@ -95,7 +95,20 @@ acceptance criteria, test evidence, documentation updates.
 - `pip-audit` and Trivy (image and repo) are clean after the image build applies Debian security updates. The first image scan caught CVE-2026-85091 in zlib, which the update fixed.
 - `docker compose up --wait` with the one-shot migrate service works, and `scripts/smoke-test.sh` passes 10/10.
 - The production override refuses to run without `IMAGE_TAG`.
-- CI on GitHub: *pending the first push.*
+
+**Evidence (GitHub Actions, commit `e95860d`, 2026-11-21):**
+- Release run 44938906150 passed every job:
+
+  | Job | Time |
+  |---|---|
+  | Lint | 23 s |
+  | Tests (sqlite) | 37 s |
+  | Tests (postgres) | 38 s |
+  | Image build and smoke test | 74 s |
+  | Build and push image | 210 s |
+
+- Security run 44938906271 passed pip-audit, Trivy fs and Trivy image.
+- The image was published as `ghcr.io/alan-911/cloud-computing:develop` and `:sha-e95860d` for linux/amd64 and linux/arm64, with provenance and SBOM manifests. Its digest is `sha256:f6fb37f5…`.
 
 ### Phase 05 — Infrastructure as Code
 Terraform for VPC, security groups, EC2 (or ECS), remote state, `plan` in CI.
