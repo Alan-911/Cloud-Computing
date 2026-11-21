@@ -1,16 +1,19 @@
 # Cloud-Native Backend Infrastructure
 
-A FastAPI items service behind an Nginx reverse proxy, being developed in
-phases from a graded cloud-computing assignment into a production-oriented
-backend: tested, containerized, automated, observable and secure.
+A FastAPI items service on PostgreSQL behind an Nginx reverse proxy, being
+developed in phases from a graded cloud-computing assignment into a
+production-oriented backend: tested, containerized, automated, observable and secure.
 
 - **Roadmap and status:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
 - **Requirements and architecture:** [`docs/architecture/requirements.md`](docs/architecture/requirements.md)
+- **Database runbook (migrations, backup, restore):** [`docs/runbooks/database.md`](docs/runbooks/database.md)
 - **Original academic submission:** tag `v1.0-academic`, files in [`docs/academic-submission/`](docs/academic-submission/NOTE.md)
 
 ```
-client ──▶ :80 nginx ──▶ api:8000 FastAPI ──▶ /data named volume (SQLite → PostgreSQL in Phase 02)
-           (published)    (internal only, non-root)
+client ──▶ :80 nginx ──▶ api:8000 FastAPI ──▶ db:5432 PostgreSQL ──▶ pgdata volume
+           (published)    (internal, non-root)   (internal)
+                              ▲
+             migrate ─────────┘  one-shot `alembic upgrade head` before api starts
 ```
 
 ## Status
@@ -19,7 +22,8 @@ client ──▶ :80 nginx ──▶ api:8000 FastAPI ──▶ /data named volu
 |---|---|
 | 00 Repository preparation | Done (project board pending) |
 | 01 Backend engineering | Done |
-| 02–10 | Planned |
+| 02 Database engineering | Done |
+| 03–10 | Planned |
 
 ## API
 
@@ -28,7 +32,8 @@ Base path `/api`. Interactive docs at `/api/docs` (disabled when
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/health` | Status, version, database reachability (503 if the database is down) |
+| GET | `/api/health/live` | Liveness: the process is up (never touches the database) |
+| GET | `/api/health` | Readiness: version and database reachability, 503 if the database is down (also `/api/health/ready`) |
 | GET | `/api/v1/items?limit=&offset=` | Paginated list with `total` |
 | POST | `/api/v1/items` | Create (201, `Location` header) |
 | GET | `/api/v1/items/{id}` | Read one |
@@ -36,8 +41,9 @@ Base path `/api`. Interactive docs at `/api/docs` (disabled when
 | PATCH | `/api/v1/items/{id}` | Partial update |
 | DELETE | `/api/v1/items/{id}` | Delete (204) |
 
-Names are 1–100 characters after trimming and unique regardless of case.
-Every error has the same shape:
+Names are 1–100 characters after trimming and unique regardless of case. Both
+rules are also enforced by the database (`CHECK` constraint and a unique index
+on `lower(name)`). Every error has the same shape:
 
 ```json
 {"error": {"code": "not_found", "message": "Item 42 was not found.", "details": {"id": 42}}}
@@ -52,47 +58,66 @@ Codes: `validation_error` (422), `not_found` (404), `conflict` (409),
 app/
   api/          routes and dependencies (HTTP only)
   core/         settings and error handling
-  database/     engine and session lifecycle
+  database/     engine, connection pool, sessions
   models/       SQLAlchemy tables
   schemas/      Pydantic request/response models
   services/     business rules
   main.py       application factory
-  Dockerfile
+  Dockerfile    built from the repo root
+migrations/     Alembic migrations (the only source of the schema)
 tests/          unit and integration tests
+scripts/        EC2 setup, database backup and restore
 nginx/          reverse proxy config
-docs/           roadmap, architecture, academic submission
+docs/           roadmap, architecture, runbooks, academic submission
 ```
-
-## Run locally
-
-```bash
-python -m venv .venv
-. .venv/bin/activate            # Windows: .venv\Scripts\activate
-pip install -r requirements-dev.txt
-uvicorn app.main:app --reload   # http://127.0.0.1:8000/api/docs
-pytest --cov                    # tests with coverage
-ruff check . && ruff format --check .
-```
-
-Configuration is read from `APP_*` environment variables or a `.env` file;
-see [`.env.example`](.env.example).
 
 ## Run with Docker Compose
 
 ```bash
+cp .env.example .env          # then set POSTGRES_PASSWORD
 docker compose up -d --build
 curl -i http://localhost/api/health
 curl -i -X POST http://localhost/api/v1/items -H "Content-Type: application/json" -d '{"name":"alpha"}'
 curl -s http://localhost/api/v1/items
 ```
 
-Only Nginx publishes a port. The API runs as UID 10001 with no reload, and its
-data lives in the `appdata` volume, which survives `docker compose down` / `up`.
-Set `APP_DEBUG=true` to expose `/api/docs` through the proxy.
+Only Nginx publishes a port; the API and PostgreSQL are reachable only on the
+Compose network. Data lives in the `pgdata` volume and survives
+`docker compose down` / `up`. Set `APP_DEBUG=true` in `.env` to expose `/api/docs`.
+
+Back up and restore: `scripts/db-backup.sh`, `scripts/db-restore.sh <file>`.
+
+## Run locally without Docker
+
+```bash
+python -m venv .venv
+. .venv/bin/activate                     # Windows: .venv\Scripts\activate
+pip install -r requirements-dev.txt
+export APP_DATABASE_URL=sqlite:///./app.db
+alembic upgrade head
+uvicorn app.main:app --reload            # http://127.0.0.1:8000/api/docs
+```
+
+## Tests
+
+```bash
+pytest --cov                             # SQLite, real migrations
+ruff check . && ruff format --check .
+```
+
+The same suite runs against PostgreSQL when `TEST_DATABASE_URL` is set. The
+target database is wiped, so use a throwaway one:
+
+```bash
+docker run -d --rm --name items_testdb -e POSTGRES_PASSWORD=test -e POSTGRES_DB=test -p 127.0.0.1:55432:5432 postgres:17-alpine
+TEST_DATABASE_URL=postgresql+psycopg://postgres:test@127.0.0.1:55432/test pytest
+docker stop items_testdb
+```
 
 ## Breaking changes from `v1.0-academic`
 
 - Item routes moved from `/api/items` to `/api/v1/items`.
 - `POST` returns the created item (201) instead of `{"message": "added"}`.
 - `GET` returns `{"items": [...], "total", "limit", "offset"}` with full item objects instead of a list of names.
-- The SQLite schema changed; remove the old `appdata` volume (`docker compose down -v`) before the first run.
+- Storage moved from SQLite in the `appdata` volume to PostgreSQL in `pgdata`. Old SQLite data is not migrated; remove the old volume with `docker volume rm cloud-computing_appdata`.
+- Compose now requires a `.env` file with `POSTGRES_PASSWORD`.

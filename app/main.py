@@ -21,11 +21,11 @@ Every error uses one envelope:
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
-    db = Database(settings.database_url)
+    db = Database(settings)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        db.create_all()
+        # Schema comes from `alembic upgrade head`, run before the app starts.
         yield
         db.dispose()
 

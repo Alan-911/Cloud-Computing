@@ -22,3 +22,6 @@ docs/academic-submission/report.html
 docs/academic-submission/shot-*.png
 node_modules/
 package-lock.json
+
+# Database backups
+backups/

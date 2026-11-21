@@ -51,9 +51,20 @@ acceptance criteria, test evidence, documentation updates.
 **Acceptance:** every endpoint works and appears in `/api/docs` with its error responses.
 
 ### Phase 02 — Database engineering
-PostgreSQL service in Compose; Alembic migrations in `migrations/`; connection
-pooling and readiness check; indexes and constraints; backup/restore script.
+- [x] `CBE-P02-001` PostgreSQL 17 service in Compose, internal only, health-gated
+- [x] `CBE-P02-002` Alembic migrations in `migrations/`; one-shot `migrate` service runs before the API; the app no longer creates tables
+- [x] `CBE-P02-003` Connection pooling (size, overflow, pre-ping, recycle, connect and statement timeouts); separate liveness and readiness endpoints
+- [x] `CBE-P02-004` Database-enforced constraints: `CHECK` on blank names, unique index on `lower(name)`
+- [x] `CBE-P02-005` Backup and restore scripts with a [runbook](runbooks/database.md)
+
 **Acceptance:** data persists across restarts; schema changes only via migrations.
+
+**Evidence (2026-11-21):**
+- An item created, then `docker compose down` and `up`, was still returned.
+- `test_models_match_migrations` passes on PostgreSQL. It compares the ORM models against the migrated schema, including the expression index.
+- The suite passed 18/18 on SQLite and on PostgreSQL 17, with 99% coverage.
+- Backup → delete → restore returned the deleted item.
+- From the host, port 8000 and port 5432 were both unreachable.
 
 ### Phase 03 — Automated testing
 Unit tests for services, integration tests against PostgreSQL, coverage

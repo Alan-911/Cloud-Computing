@@ -13,6 +13,10 @@ class ErrorResponse(BaseModel):
     error: ErrorDetail
 
 
+class LivenessResponse(BaseModel):
+    status: Literal["ok"]
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok", "degraded"]
     version: str

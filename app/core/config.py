@@ -10,12 +10,22 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="APP_", env_file=".env", extra="ignore")
 
     name: str = "Cloud-Native Items API"
-    version: str = "1.1.0"
+    version: str = "1.2.0"
     environment: Literal["development", "test", "staging", "production"] = "development"
     debug: bool = False
 
-    # SQLite for now; Phase 02 switches this to a PostgreSQL URL.
+    # SQLAlchemy URL. Compose and Kubernetes set a PostgreSQL URL, e.g.
+    # postgresql+psycopg://app:<password>@db:5432/app. SQLite is for quick local runs.
     database_url: str = "sqlite:///./app.db"
+
+    # Connection pool (ignored for SQLite). Per process: size + overflow is the
+    # most connections one API replica will open.
+    db_pool_size: int = 5
+    db_max_overflow: int = 5
+    db_pool_timeout: float = 10.0
+    db_pool_recycle: int = 1800
+    db_connect_timeout: int = 5
+    db_statement_timeout_ms: int = 5000
 
     api_prefix: str = "/api"
     default_page_size: int = 20

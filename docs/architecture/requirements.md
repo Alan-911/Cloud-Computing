@@ -18,9 +18,10 @@
 | NFR-3 | The API container runs as a non-root user and is reachable only through the proxy. |
 | NFR-4 | Every public endpoint is documented in OpenAPI with its error responses. |
 | NFR-5 | Data persists across container restarts. |
-| NFR-6 | The database backend is swappable by URL (SQLite now, PostgreSQL in Phase 02). |
+| NFR-6 | The database backend is chosen by URL: PostgreSQL in Compose, SQLite for quick local runs. |
+| NFR-7 | The schema changes only through Alembic migrations, and the tests check that the models match them. |
 
-## Architecture (current, Phase 01)
+## Architecture (current, Phase 02)
 
 ```
 client ─▶ nginx :80 ─▶ api:8000 (FastAPI)
@@ -29,10 +30,12 @@ client ─▶ nginx :80 ─▶ api:8000 (FastAPI)
                           ├─ services/   business rules (uniqueness, not-found)
                           ├─ models/     SQLAlchemy ORM tables
                           ├─ schemas/    Pydantic request/response models
-                          ├─ database/   engine and session lifecycle
+                          ├─ database/   engine, connection pool, sessions
                           └─ core/       settings, error types and handlers
                           ▼
-                     /data/app.db (named volume)
+                     db:5432 PostgreSQL 17 (pgdata volume)
+                          ▲
+                     migrate: alembic upgrade head (migrations/), runs before api
 ```
 
 Dependencies point inward: routes call services, services use models and the

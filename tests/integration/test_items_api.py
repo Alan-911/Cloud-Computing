@@ -15,7 +15,7 @@ def create(client: TestClient, name: str, description: str | None = None) -> dic
 def test_health(client: TestClient) -> None:
     r = client.get("/api/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok", "version": "1.1.0", "environment": "test", "database": "ok"}
+    assert r.json() == {"status": "ok", "version": "1.2.0", "environment": "test", "database": "ok"}
 
 
 def test_crud_round_trip(client: TestClient) -> None:
@@ -103,8 +103,15 @@ def test_unknown_route_uses_envelope(client: TestClient) -> None:
 
 def test_openapi_documents_every_endpoint(client: TestClient) -> None:
     paths = client.get("/api/openapi.json").json()["paths"]
-    assert set(paths) == {"/api/health", ITEMS, f"{ITEMS}/{{item_id}}"}
+    assert set(paths) == {"/api/health", "/api/health/live", ITEMS, f"{ITEMS}/{{item_id}}"}
     assert set(paths[f"{ITEMS}/{{item_id}}"]) == {"get", "put", "patch", "delete"}
     for ops in paths.values():
         for op in ops.values():
             assert op.get("summary")
+
+
+def test_liveness_does_not_need_database(client: TestClient) -> None:
+    client.app.state.db.ping = lambda: False
+    assert client.get("/api/health/live").json() == {"status": "ok"}
+    r = client.get("/api/health/ready")
+    assert r.status_code == 503 and r.json()["database"] == "unavailable"

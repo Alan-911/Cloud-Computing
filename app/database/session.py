@@ -1,34 +1,42 @@
 """Engine and session lifecycle. The engine is built from settings so tests
-and environments can point at any database URL."""
+and environments can point at any database URL.
+
+The schema is owned by Alembic (`migrations/`); the application never creates
+or alters tables itself."""
 
 from collections.abc import Iterator
 
 from sqlalchemy import Engine, create_engine, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
 
-from app.database.base import Base
+from app.core.config import Settings
 
 
-def build_engine(database_url: str) -> Engine:
-    kwargs: dict = {"pool_pre_ping": True}
-    if database_url.startswith("sqlite"):
-        kwargs["connect_args"] = {"check_same_thread": False}
-        if ":memory:" in database_url or database_url == "sqlite://":
-            kwargs["poolclass"] = StaticPool
-    return create_engine(database_url, **kwargs)
+def build_engine(settings: Settings) -> Engine:
+    url = make_url(settings.database_url)
+    if url.get_backend_name() == "sqlite":
+        return create_engine(url, connect_args={"check_same_thread": False})
+
+    connect_args: dict = {"connect_timeout": settings.db_connect_timeout}
+    if url.get_backend_name() == "postgresql":
+        # Server-side guard against runaway queries holding a pooled connection.
+        connect_args["options"] = f"-c statement_timeout={settings.db_statement_timeout_ms}"
+    return create_engine(
+        url,
+        pool_pre_ping=True,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_timeout=settings.db_pool_timeout,
+        pool_recycle=settings.db_pool_recycle,
+        connect_args=connect_args,
+    )
 
 
 class Database:
-    def __init__(self, database_url: str) -> None:
-        self.engine = build_engine(database_url)
+    def __init__(self, settings: Settings) -> None:
+        self.engine = build_engine(settings)
         self._sessionmaker = sessionmaker(bind=self.engine, autoflush=False, expire_on_commit=False)
-
-    def create_all(self) -> None:
-        # Replaced by Alembic migrations in Phase 02.
-        import app.models  # noqa: F401  (registers tables on Base.metadata)
-
-        Base.metadata.create_all(self.engine)
 
     def session(self) -> Iterator[Session]:
         with self._sessionmaker() as session:
