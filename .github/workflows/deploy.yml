@@ -1,21 +1,27 @@
 name: Deploy
 
-# Manual deploy of an already-published image to the EC2 host over SSH.
+# Manual deploy of an already-published image to the Terraform-managed EC2 host.
 # Pick the branch or tag in "Use workflow from"; the image built from that exact
 # commit (sha-<short>) is deployed, with the Compose files from the same commit.
 # To roll back, run this workflow again from the earlier commit or tag.
 #
-# Setup (once), in Settings -> Environments -> production:
-#   secrets   EC2_HOST, EC2_USER, EC2_SSH_KEY (private key for that user)
-#   variables APP_URL (public base URL, e.g. http://203.0.113.10)
-#   optional  required reviewers, to make every deploy need approval
-# The host needs Docker, the Compose plugin, a clone of this repository at
-# ~/Cloud-Computing and a .env with POSTGRES_PASSWORD (scripts/ec2-setup.sh does this).
+# No SSH and no stored AWS keys: the job gets short-lived credentials through
+# GitHub OIDC for a role that can only run commands on the app instance via
+# AWS Systems Manager, and only from the `production` environment.
+#
+# Setup (once), in Settings -> Environments -> production -> variables, using the
+# outputs of infrastructure/terraform/app:
+#   AWS_DEPLOY_ROLE_ARN  (deploy_role_arn)
+#   EC2_INSTANCE_ID      (instance_id)
+#   APP_URL              (app_url)
+#   AWS_REGION           (optional, default us-east-1)
+# Optionally add required reviewers so every deploy needs approval.
 on:
   workflow_dispatch:
 
 permissions:
   contents: read
+  id-token: write # OIDC token for AWS
 
 concurrency:
   group: deploy-production
@@ -31,56 +37,66 @@ jobs:
       url: ${{ vars.APP_URL }}
     env:
       IMAGE: ghcr.io/alan-911/cloud-computing
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
     steps:
       - name: Check configuration
-        env:
-          HOST: ${{ secrets.EC2_HOST }}
-          USER: ${{ secrets.EC2_USER }}
-          KEY: ${{ secrets.EC2_SSH_KEY }}
         run: |
           missing=()
-          [ -n "$HOST" ] || missing+=(EC2_HOST)
-          [ -n "$USER" ] || missing+=(EC2_USER)
-          [ -n "$KEY" ]  || missing+=(EC2_SSH_KEY)
+          [ -n "${{ vars.AWS_DEPLOY_ROLE_ARN }}" ] || missing+=(AWS_DEPLOY_ROLE_ARN)
+          [ -n "$INSTANCE_ID" ] || missing+=(EC2_INSTANCE_ID)
           if [ ${#missing[@]} -gt 0 ]; then
-            echo "::error::Missing production secrets: ${missing[*]}"; exit 1
+            echo "::error::Missing production environment variables: ${missing[*]}"; exit 1
           fi
           echo "IMAGE_TAG=sha-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
 
       - name: The image for this commit exists (built and tested by Release)
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
           docker buildx imagetools inspect "${IMAGE}:${IMAGE_TAG}" > /dev/null || {
             echo "::error::${IMAGE}:${IMAGE_TAG} not found. Wait for the Release workflow on this commit."
             exit 1
           }
 
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
-        env:
-          IMAGE_TAG: ${{ env.IMAGE_TAG }}
-          COMMIT: ${{ github.sha }}
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          envs: IMAGE_TAG,COMMIT
-          command_timeout: 10m
-          script: |
-            set -euo pipefail
-            cd ~/Cloud-Computing
-            git fetch --quiet origin
-            git checkout --quiet --detach "$COMMIT"
-            export IMAGE_TAG
-            compose="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
-            $compose pull migrate api
-            $compose up -d --wait --wait-timeout 120
-            $compose ps
-            bash scripts/smoke-test.sh http://localhost
-            echo "$IMAGE_TAG $COMMIT $(date -u +%FT%TZ)" >> ~/deploy-history.log
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: deploy-${{ github.run_id }}
+
+      - name: Deploy on the host (SSM Run Command)
+        run: |
+          set -euo pipefail
+          script="set -euo pipefail
+          cd /opt/cloud-computing
+          git fetch --quiet --tags origin
+          git checkout --quiet --detach ${GITHUB_SHA}
+          IMAGE_TAG=${IMAGE_TAG} bash scripts/deploy-on-host.sh"
+
+          params=$(jq -n --arg s "$script" '{commands: [$s], executionTimeout: ["900"]}')
+          command_id=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "Deploy ${IMAGE_TAG} from run ${GITHUB_RUN_ID}" \
+            --parameters "$params" \
+            --query Command.CommandId --output text)
+          echo "SSM command: $command_id"
+
+          status=Pending
+          for _ in $(seq 1 90); do
+            sleep 10
+            status=$(aws ssm get-command-invocation --command-id "$command_id" \
+              --instance-id "$INSTANCE_ID" --query Status --output text 2>/dev/null || echo Pending)
+            case "$status" in Pending|InProgress|Delayed) continue ;; *) break ;; esac
+          done
+
+          aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" \
+            --query '[StandardOutputContent, StandardErrorContent]' --output text
+          echo "Final status: $status"
+          [ "$status" = "Success" ]
 
       - name: Public health check
         if: vars.APP_URL != ''
         run: |
-          curl -fsS -m 10 "${{ vars.APP_URL }}/api/health"
-          echo "Deployed ${IMAGE}:${IMAGE_TAG}" >> "$GITHUB_STEP_SUMMARY"
+          body=$(curl -fsS -m 10 "${{ vars.APP_URL }}/api/health")
+          echo "$body"
+          echo "Deployed \`${IMAGE}:${IMAGE_TAG}\` — health: \`$body\`" >> "$GITHUB_STEP_SUMMARY"

@@ -25,3 +25,13 @@ package-lock.json
 
 # Database backups
 backups/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+terraform.tfvars
+backend.hcl
+crash.log

@@ -1,0 +1,105 @@
+name: Infrastructure
+
+# Terraform checks for infrastructure/terraform. Security misconfiguration in the
+# Terraform code is also scanned by Trivy in security.yml.
+on:
+  pull_request:
+    paths: ["infrastructure/**", ".github/workflows/infra.yml"]
+  push:
+    branches: [main, develop]
+    paths: ["infrastructure/**", ".github/workflows/infra.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infra-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+
+jobs:
+  validate:
+    name: Terraform fmt, validate, tflint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.17.2
+          terraform_wrapper: false
+      - run: terraform fmt -check -recursive -diff infrastructure/terraform
+      - name: validate (each stack, no backend)
+        run: |
+          for stack in bootstrap app; do
+            echo "::group::$stack"
+            terraform -chdir=infrastructure/terraform/$stack init -backend=false
+            terraform -chdir=infrastructure/terraform/$stack validate
+            echo "::endgroup::"
+          done
+      - uses: terraform-linters/setup-tflint@6ffdbaa3be476b3431f7275c26966ef32ff60337 # v6.3.2
+        with:
+          tflint_version: v0.66.0
+      - name: tflint
+        env:
+          GITHUB_TOKEN: ${{ github.token }} # rate limit for plugin download
+        run: |
+          tflint --init --config "$GITHUB_WORKSPACE/.tflint.hcl"
+          tflint --recursive --config "$GITHUB_WORKSPACE/.tflint.hcl" --chdir infrastructure/terraform --format compact
+
+  plan:
+    name: Terraform plan (app)
+    needs: validate
+    # Runs once the bootstrap stack exists and its outputs are saved as repository
+    # variables. Pull requests from forks cannot get the OIDC token, so they skip.
+    if: >-
+      vars.AWS_PLAN_ROLE_ARN != '' && vars.TF_STATE_BUCKET != '' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: infrastructure/terraform/app
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: 1.17.2
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          role-session-name: terraform-plan-${{ github.run_id }}
+      - name: init
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=app/production.tfstate" \
+            -backend-config="region=${{ vars.AWS_REGION || 'us-east-1' }}" \
+            -backend-config="encrypt=true" \
+            -backend-config="use_lockfile=true"
+      - name: plan (read-only role, no lock)
+        run: |
+          set -o pipefail
+          terraform plan -lock=false -no-color -detailed-exitcode -out=tfplan | tee plan.txt || code=$?
+          code=${code:-0}
+          {
+            echo "### Terraform plan (app)"
+            case $code in
+              0) echo "No changes: infrastructure matches the code." ;;
+              2) echo "Changes pending; apply them from an admin workstation after review." ;;
+              *) echo "Plan failed." ;;
+            esac
+            echo '```'
+            grep -E '^(Plan:|No changes)|# .* (will|must) be' plan.txt || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ "$code" -ne 1 ]

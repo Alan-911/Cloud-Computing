@@ -13,11 +13,12 @@ pull request ──▶ CI ──────────────────
 push develop / main / tag vX.Y.Z ──▶ Release: CI (same jobs) ──▶ build amd64+arm64
                                                               ──▶ push to GHCR + SBOM + provenance
 
-manual ──▶ Deploy (environment: production) ──▶ SSH to EC2 ──▶ pull sha-<commit> ──▶ compose up --wait ──▶ smoke test
+manual ──▶ Deploy (environment: production) ──▶ OIDC role ──▶ SSM Run Command on EC2 ──▶ pull sha-<commit> ──▶ compose up --wait ──▶ smoke test
 ```
 
 | Workflow | File | Trigger |
 |---|---|---|
+| Infrastructure | `.github/workflows/infra.yml` | Changes under `infrastructure/`: fmt, validate, tflint, read-only plan |
 | CI | `.github/workflows/ci.yml` | Pull requests, manual, called by Release |
 | Security | `.github/workflows/security.yml` | Push to main/develop, pull requests, Mondays 06:17 UTC, manual |
 | Release | `.github/workflows/release.yml` | Push to main/develop, tags `v*.*.*`, manual |
@@ -66,18 +67,17 @@ git tag -a v1.4.0 -m "v1.4.0" && git push origin v1.4.0
 Actions → **Deploy** → *Run workflow*, and pick the branch or tag. The workflow then:
 
 1. Checks that the image for that exact commit exists.
-2. Over SSH, checks out the same commit on the host.
-3. Runs `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --wait`.
-4. Runs the smoke test on the host and appends the deploy to `~/deploy-history.log`.
+2. Assumes the deploy role through GitHub OIDC. There's no SSH and there are no stored keys.
+3. Sends an SSM Run Command to the instance. On the host, the command checks out the same commit and runs `scripts/deploy-on-host.sh`.
+4. That script runs `docker compose ... up -d --wait`, then the smoke test, and appends the deploy to `/data/deploy-history.log`.
+5. The workflow prints the command's output and checks the public `/api/health`.
 
 To roll back, run Deploy again from the previous tag or commit. Database migrations only move forward. Write them so the previous image still works with the new schema: expand first, contract in a later release.
 
-One-time setup, in Settings → Environments → `production`:
+One-time setup, in Settings → Environments → `production` → variables. The values come from `terraform output` in `infrastructure/terraform/app`; see the [infrastructure runbook](infrastructure.md).
 
-- **Secrets:** `EC2_HOST`, `EC2_USER`, `EC2_SSH_KEY`.
-- **Variable:** `APP_URL`.
-- **Approval (optional):** required reviewers, so every deploy needs a human.
-- **Registry access:** if the GHCR package is private, run `docker login ghcr.io` once on the host with a read-only token, or make the package public.
+- **Variables:** `AWS_DEPLOY_ROLE_ARN`, `EC2_INSTANCE_ID`, `APP_URL`, and optionally `AWS_REGION`.
+- **Approval (optional):** required reviewers, so every deploy needs a human. The deploy role can only be assumed from this environment.
 
 ## Branch protection (applied 2026-11-21)
 
