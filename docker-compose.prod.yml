@@ -1,0 +1,18 @@
+# Production override: run a published, versioned image instead of building on
+# the server.
+#
+#   IMAGE_TAG=sha-1a2b3c4 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --wait
+#
+# IMAGE_TAG is required so a deploy always names an exact, already-tested image.
+
+x-published-image: &published-image
+  image: ghcr.io/alan-911/cloud-computing:${IMAGE_TAG:?set IMAGE_TAG to a published tag, e.g. sha-1a2b3c4}
+  pull_policy: always
+
+services:
+  migrate:
+    <<: *published-image
+    build: !reset null
+
+  api:
+    <<: *published-image

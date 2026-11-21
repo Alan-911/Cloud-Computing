@@ -1,46 +1,61 @@
 # syntax=docker/dockerfile:1
+#
+# Build from the repository root so migrations ship in the same image:
+#   docker build -f app/Dockerfile -t items-api .
 
 # Slim base: small image, no compiler toolchain shipped to production.
 FROM python:3.12-slim
 
+# Set by the release workflow from the Git tag; local builds report the code default.
+ARG APP_VERSION=1.3.0-local
+ARG APP_REVISION=unknown
+LABEL org.opencontainers.image.title="cloud-native-items-api" \
+      org.opencontainers.image.version=$APP_VERSION \
+      org.opencontainers.image.revision=$APP_REVISION \
+      org.opencontainers.image.source="https://github.com/Alan-911/Cloud-Computing"
+
 # PYTHONDONTWRITEBYTECODE keeps .pyc files out of the image.
 # PYTHONUNBUFFERED makes logs appear immediately in `docker compose logs`.
+# APP_VERSION makes /api/health report the version of the running image.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    APP_ENVIRONMENT=production \
+    APP_VERSION=$APP_VERSION
 
-WORKDIR /app
+WORKDIR /srv
 
-# Dependencies are copied and installed before the application code so that
-# this layer stays cached when only main.py changes.
-COPY requirements.txt ./
+# Apply Debian security fixes released after the base image was built (e.g. a
+# zlib CVE flagged by the image scan). The Trivy gate in security.yml catches
+# any fixable HIGH/CRITICAL package this misses.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
+
+# Dependencies first so this layer stays cached when only code changes.
+COPY app/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Application code.
-COPY main.py ./
+# Application package and the migrations that own its schema.
+COPY alembic.ini ./
+COPY migrations ./migrations
+COPY app ./app
 
-# Create the unprivileged runtime user.
-#
-# /data is created and chowned HERE, while the image is still being built.
-# When Docker first creates the named volume and mounts it at /data, it seeds
-# the empty volume from the image's /data directory, ownership included. If
-# /data did not exist in the image, the volume would be created root-owned and
-# the non-root process could not open the SQLite file.
-RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin appuser \
-    && mkdir -p /data \
-    && chown -R appuser:appuser /data /app
-
+# Unprivileged runtime user. Nothing in the image is writable by it except its
+# home directory; all state lives in PostgreSQL.
+RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin appuser
 USER appuser
 
-# Documents the internal port. Publishing is deliberately left to Compose,
-# and only nginx is published to the host.
+# Documents the internal port. Publishing is left to Compose, and only nginx
+# is published to the host.
 EXPOSE 8000
 
-# Uses the standard library so the image does not need curl installed.
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+# Liveness only: a database outage should not mark the container unhealthy and
+# trigger restarts. Readiness (/api/health) is what nginx and probes use.
+HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request, sys; \
-sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2).status == 200 else 1)"
+sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health/live', timeout=2).status == 200 else 1)"
 
 # Exec form, no --reload: one process, signals reach uvicorn, no file watcher.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]

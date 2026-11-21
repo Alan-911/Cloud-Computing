@@ -1,0 +1,11 @@
+# Build context is the repository root; send only what the image needs.
+*
+!app/
+!migrations/
+!alembic.ini
+
+**/__pycache__/
+**/*.py[cod]
+**/*.db
+**/*.sqlite*
+app/Dockerfile

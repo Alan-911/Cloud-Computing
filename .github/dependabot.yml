@@ -1,0 +1,29 @@
+# Weekly update PRs, opened against develop so CI and the security scans vet them.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directories: ["/app", "/"]
+    target-branch: develop
+    schedule: { interval: weekly, day: monday }
+    groups:
+      python:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    target-branch: develop
+    schedule: { interval: weekly, day: monday }
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: "/app"
+    target-branch: develop
+    schedule: { interval: weekly, day: monday }
+
+  - package-ecosystem: docker-compose
+    directory: "/"
+    target-branch: develop
+    schedule: { interval: weekly, day: monday }
