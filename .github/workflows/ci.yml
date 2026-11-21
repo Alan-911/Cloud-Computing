@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  PYTHON_VERSION: "3.12" # matches the python:3.12-slim runtime image
+  PYTHON_VERSION: "3.15" # matches the python:3.15-slim runtime image
 
 jobs:
   lint:

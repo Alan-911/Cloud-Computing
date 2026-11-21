@@ -4,7 +4,7 @@
 #   docker build -f app/Dockerfile -t items-api .
 
 # Slim base: small image, no compiler toolchain shipped to production.
-FROM python:3.12-slim
+FROM python:3.15-slim
 
 # Set by the release workflow from the Git tag; local builds report the code default.
 ARG APP_VERSION=1.4.0-local
