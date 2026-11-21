@@ -1,6 +1,24 @@
-# build intermediates
-docs/_*
-docs/report.html
-docs/shot-*.png
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Local data and secrets
+*.db
+*.sqlite
+*.sqlite3
+.env
+
+# Academic-submission build intermediates
+docs/academic-submission/_*
+docs/academic-submission/report.html
+docs/academic-submission/shot-*.png
 node_modules/
 package-lock.json
