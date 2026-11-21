@@ -3,6 +3,9 @@ services:
     build:
       context: ./app
     container_name: fastapi_api
+    environment:
+      APP_ENVIRONMENT: ${APP_ENVIRONMENT:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
     volumes:
       - appdata:/data
     expose:

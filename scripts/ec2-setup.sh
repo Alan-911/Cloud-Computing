@@ -94,9 +94,9 @@ sudo docker compose ps
 
 say "Smoke test through the proxy"
 printf 'health : '; curl -s http://localhost/api/health; echo
-printf 'post   : '; curl -s -X POST http://localhost/api/items \
-    -H 'Content-Type: application/json' -d '{"name":"ec2-smoke-test"}'; echo
-printf 'items  : '; curl -s http://localhost/api/items; echo
+printf 'post   : '; curl -s -X POST http://localhost/api/v1/items \
+    -H 'Content-Type: application/json' -d "{\"name\":\"ec2-smoke-test-$(date +%s)\"}"; echo
+printf 'items  : '; curl -s http://localhost/api/v1/items; echo
 
 say "Done"
 echo "Public URL: http://$(curl -fsS --max-time 5 http://169.254.169.254/latest/meta-data/public-ipv4 \

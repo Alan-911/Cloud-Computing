@@ -3,22 +3,31 @@
 # Slim base: small image, no compiler toolchain shipped to production.
 FROM python:3.12-slim
 
+ARG APP_VERSION=1.1.0
+LABEL org.opencontainers.image.title="cloud-native-items-api" \
+      org.opencontainers.image.version=$APP_VERSION \
+      org.opencontainers.image.source="https://github.com/Alan-911/Cloud-Computing"
+
 # PYTHONDONTWRITEBYTECODE keeps .pyc files out of the image.
 # PYTHONUNBUFFERED makes logs appear immediately in `docker compose logs`.
+# APP_* settings are defaults; Compose or Kubernetes can override them.
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    APP_ENVIRONMENT=production \
+    APP_DATABASE_URL=sqlite:////data/app.db
 
-WORKDIR /app
+WORKDIR /srv
 
 # Dependencies are copied and installed before the application code so that
-# this layer stays cached when only main.py changes.
+# this layer stays cached when only application code changes.
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Application code.
-COPY main.py ./
+# Application code. The build context is ./app, copied in as the `app` package
+# so imports read `app.api...`, the same as in tests run from the repo root.
+COPY . ./app/
 
 # Create the unprivileged runtime user.
 #
@@ -29,7 +38,7 @@ COPY main.py ./
 # the non-root process could not open the SQLite file.
 RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin appuser \
     && mkdir -p /data \
-    && chown -R appuser:appuser /data /app
+    && chown -R appuser:appuser /data /srv
 
 USER appuser
 
@@ -43,4 +52,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=2).status == 200 else 1)"
 
 # Exec form, no --reload: one process, signals reach uvicorn, no file watcher.
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
