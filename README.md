@@ -28,7 +28,7 @@ client ──▶ :80 nginx ──▶ api:8000 FastAPI ──▶ db:5432 PostgreS
 | 01 Backend engineering | Done |
 | 02 Database engineering | Done |
 | 03 Automated testing | Done |
-| 04 CI/CD | Done (branch protection pending) |
+| 04 CI/CD | Done |
 | 05–10 | Planned |
 
 ## API

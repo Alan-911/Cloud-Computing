@@ -85,7 +85,10 @@ acceptance criteria, test evidence, documentation updates.
 - [x] `CBE-P04-001` `ci.yml`: lint, tests on SQLite and PostgreSQL, image build with a Compose smoke test (port isolation, persistence across restart)
 - [x] `CBE-P04-002` `security.yml`: pip-audit, plus Trivy scans of the repo (vulnerabilities, secrets, misconfiguration) and the image. Fails on fixable HIGH/CRITICAL findings, reports to the Security tab, and runs weekly.
 - [x] `CBE-P04-003` `release.yml`: only after CI passes, publishes multi-arch images to GHCR with branch, SHA and semver tags, an SBOM and signed provenance. Rejects a tag that doesn't match the code version.
-- [ ] `CBE-P04-004` Branch protection on `main` and `develop` *(settings in [runbook](runbooks/ci-cd.md); needs owner approval)*
+- [x] `CBE-P04-004` Branch protection:
+  - `main` requires a PR plus the four CI checks, admins included.
+  - `develop` requires the checks and blocks force-push and deletion.
+  - Details in the [runbook](runbooks/ci-cd.md).
 - [x] `CBE-P04-005` `deploy.yml`: manual, through the `production` environment. Deploys the image for the selected commit over SSH, runs the smoke test, and rolls back by redeploying an earlier ref. Also adds Dependabot and a PR template.
 
 **Acceptance:** every PR runs the required checks; images are reproducible and tagged.

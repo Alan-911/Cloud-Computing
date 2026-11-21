@@ -79,12 +79,21 @@ One-time setup, in Settings → Environments → `production`:
 - **Approval (optional):** required reviewers, so every deploy needs a human.
 - **Registry access:** if the GHCR package is private, run `docker login ghcr.io` once on the host with a read-only token, or make the package public.
 
-## Branch protection (recommended settings)
+## Branch protection (applied 2026-11-21)
 
-| Branch | Settings |
-|---|---|
-| `main` | Require a pull request; require status checks *Lint*, *Tests (sqlite)*, *Tests (postgres)* and *Image build and smoke test*; require the branch to be up to date; block force-pushes and deletion. |
-| `develop` | Same required checks; force-pushes blocked. |
+Required checks on both branches: *Lint*, *Tests (sqlite)*, *Tests (postgres)*, *Image build and smoke test*.
+
+| Branch | Pull request | Checks up to date | Applies to admins | Force-push / delete |
+|---|---|---|---|---|
+| `main` | Required (0 approvals: solo project), conversations resolved | Yes (strict) | **Yes**: nobody pushes to main directly | Blocked |
+| `develop` | Not required | No | No: the owner can push directly; everyone else, including Dependabot, must pass CI | Blocked |
+
+So code reaches `main` only through a pull request from `develop` whose checks
+are green. To raise `develop` to the same bar later:
+
+```bash
+gh api -X PUT repos/Alan-911/Cloud-Computing/branches/develop/protection/enforce_admins
+```
 
 ## When CI fails
 
