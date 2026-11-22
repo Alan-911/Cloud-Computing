@@ -132,7 +132,7 @@ acceptance criteria, test evidence, documentation updates.
   - `fmt`, `validate` and `tflint` on every change
   - a read-only `plan` once the bootstrap variables are set
   - Trivy checks the Terraform for misconfiguration
-- [ ] `CBE-P05-005` Create and destroy the environment from Terraform alone *(needs owner approval and an administrator IAM identity; the account currently uses root keys)*
+- [x] `CBE-P05-005` Create and destroy the environment from Terraform alone (as IAM user `yves-admin`)
 
 **Acceptance:** environment created and destroyed from Terraform alone.
 
@@ -153,6 +153,25 @@ acceptance criteria, test evidence, documentation updates.
 - **First CI plan failed:** the trust policy rejected the token, because the repo uses GitHub immutable OIDC subjects.
 - **Trust fix:** both trust policies now use the immutable subject (an in-place change to one resource).
 - **Keyless CI plan:** Infrastructure run 44977505706 assumed the read-only role through OIDC and planned the app stack: 18 to add, 0 to change, 0 to destroy.
+
+**Evidence (app stack create → deploy → destroy, 2026-11-22):**
+- **Created:** `terraform apply` added 18 resources at 02:51:32Z. Host `i-0549fd1b713b43ad7` was a t4g.small (arm64) at 100.50.238.252.
+- **First boot:** healthy about 70 s later. `/api/health` returned `{"version":"1.4.0","database":"ok"}`.
+- **Public smoke test:** `scripts/smoke-test.sh http://100.50.238.252` passed 10/10.
+- **Port isolation:** ports 22, 8000 and 5432 were closed from the internet. Only nginx on port 80 answered.
+- **Host checks via SSM:** the agent was online, and a read-only Run Command showed:
+  - `/data` mounted on its own XFS volume, with `/data/docker` as Docker's data root
+  - all three services healthy
+  - `.env` with mode `600 root`
+  - the first-boot deploy logged as 1.4.0 at `56792f7`
+- **Keyless deploy:** Deploy run 44978233395, started from `v1.4.0`, did the following:
+  - assumed the deploy role through OIDC
+  - checked out `56792f7` on the host and redeployed `sha-56792f7` via SSM Run Command `ce362623…`
+  - passed the smoke test on the host and the public health check
+- **Destroyed:** `terraform destroy` removed 18 resources by 02:57:07Z, and the state is empty.
+- **Independent check in AWS:** the instance is terminated, and no volumes, Elastic IPs, 10.20 VPC, app roles or instance profiles are left.
+- **Untouched:** the bootstrap stack and the pre-existing DA510 instances and VPCs.
+- **Cost:** about 6 minutes of runtime, a fraction of a cent.
 
 ### Phase 06 — Kubernetes
 Manifests (Deployment, Service, ConfigMap, Secret, Ingress, probes, HPA),

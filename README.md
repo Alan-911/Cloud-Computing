@@ -30,7 +30,7 @@ client ──▶ :80 nginx ──▶ api:8000 FastAPI ──▶ db:5432 PostgreS
 | 02 Database engineering | Done |
 | 03 Automated testing | Done |
 | 04 CI/CD | Done |
-| 05 Infrastructure as Code | Built and planned; apply pending |
+| 05 Infrastructure as Code | Done (bootstrap live; app stack created, deployed and destroyed) |
 | 06–10 | Planned |
 
 ## API
