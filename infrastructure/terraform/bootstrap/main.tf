@@ -34,8 +34,19 @@ variable "region" {
   default = "us-east-1"
 }
 
+variable "github_oidc_subject_prefix" {
+  description = <<-EOT
+    Prefix of the `sub` claim in this repository's GitHub OIDC tokens. The repo
+    uses immutable subject claims, which embed the owner and repository IDs, so a
+    renamed or re-created repository with the same name cannot assume the roles.
+    Read it with: gh api repos/OWNER/REPO/actions/oidc/customization/sub
+  EOT
+  type        = string
+  default     = "repo:Alan-911@136555079/Cloud-Computing@1400158294"
+}
+
 variable "github_repository" {
-  description = "owner/name of the repository whose workflows may assume the CI roles."
+  description = "owner/name of the repository (used for tags)."
   type        = string
   default     = "Alan-911/Cloud-Computing"
 }
@@ -152,8 +163,8 @@ data "aws_iam_policy_document" "plan_trust" {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
       values = [
-        "repo:${var.github_repository}:pull_request",
-        "repo:${var.github_repository}:ref:refs/heads/*",
+        "${var.github_oidc_subject_prefix}:pull_request",
+        "${var.github_oidc_subject_prefix}:ref:refs/heads/*",
       ]
     }
   }

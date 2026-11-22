@@ -15,9 +15,20 @@ variable "name" {
 }
 
 variable "github_repository" {
-  description = "owner/name; cloned onto the host and trusted for deploys."
+  description = "owner/name; cloned onto the host."
   type        = string
   default     = "Alan-911/Cloud-Computing"
+}
+
+variable "github_oidc_subject_prefix" {
+  description = <<-EOT
+    Prefix of the `sub` claim in this repository's GitHub OIDC tokens (immutable
+    subject claims embed the owner and repository IDs). Only Deploy jobs whose
+    token matches <prefix>:environment:<environment> can assume the deploy role.
+    Read it with: gh api repos/OWNER/REPO/actions/oidc/customization/sub
+  EOT
+  type        = string
+  default     = "repo:Alan-911@136555079/Cloud-Computing@1400158294"
 }
 
 # --- Network --------------------------------------------------------------------

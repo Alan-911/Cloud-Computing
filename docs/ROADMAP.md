@@ -147,6 +147,13 @@ acceptance criteria, test evidence, documentation updates.
 - No existing resources are touched.
 - The estimated cost is about $18.31/month: [runbook](runbooks/infrastructure.md).
 
+**Evidence (bootstrap applied, 2026-11-22, as IAM user `yves-admin`, not root):**
+- **Apply:** `terraform apply` added 11 resources. A follow-up `plan` showed no changes.
+- **State bucket:** versioning is on, encryption is AES256, all four public-access blocks are on, and plain HTTP is refused (403).
+- **First CI plan failed:** the trust policy rejected the token, because the repo uses GitHub immutable OIDC subjects.
+- **Trust fix:** both trust policies now use the immutable subject (an in-place change to one resource).
+- **Keyless CI plan:** Infrastructure run 44977505706 assumed the read-only role through OIDC and planned the app stack: 18 to add, 0 to change, 0 to destroy.
+
 ### Phase 06 — Kubernetes
 Manifests (Deployment, Service, ConfigMap, Secret, Ingress, probes, HPA),
 run on kind/minikube first.
