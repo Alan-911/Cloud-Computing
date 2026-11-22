@@ -11,6 +11,7 @@ production-oriented backend: tested, containerized, automated, observable and se
 - **Requirements and architecture:** [`docs/architecture/requirements.md`](docs/architecture/requirements.md)
 - **Database runbook (migrations, backup, restore):** [`docs/runbooks/database.md`](docs/runbooks/database.md)
 - **CI/CD runbook (pipeline, releases, deploy, rollback):** [`docs/runbooks/ci-cd.md`](docs/runbooks/ci-cd.md)
+- **Infrastructure runbook (Terraform, AWS, cost):** [`docs/runbooks/infrastructure.md`](docs/runbooks/infrastructure.md)
 - **Original academic submission:** tag `v1.0-academic`, files in [`docs/academic-submission/`](docs/academic-submission/NOTE.md)
 
 ```
@@ -29,7 +30,8 @@ client ──▶ :80 nginx ──▶ api:8000 FastAPI ──▶ db:5432 PostgreS
 | 02 Database engineering | Done |
 | 03 Automated testing | Done |
 | 04 CI/CD | Done |
-| 05–10 | Planned |
+| 05 Infrastructure as Code | Built and planned; apply pending |
+| 06–10 | Planned |
 
 ## API
 
@@ -71,8 +73,9 @@ app/
   main.py       application factory
   Dockerfile    built from the repo root
 migrations/     Alembic migrations (the only source of the schema)
+infrastructure/ Terraform: bootstrap (state, OIDC) and app (VPC, EC2, IAM)
 tests/          unit and integration tests
-scripts/        tests, smoke test, EC2 setup, database backup and restore
+scripts/        tests, smoke test, host deploy, EC2 setup, database backup and restore
 .github/        CI, security, release and deploy workflows; Dependabot
 nginx/          reverse proxy config
 docs/           roadmap, architecture, runbooks, academic submission

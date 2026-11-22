@@ -114,8 +114,38 @@ acceptance criteria, test evidence, documentation updates.
 - The image was published as `ghcr.io/alan-911/cloud-computing:develop` and `:sha-e95860d` for linux/amd64 and linux/arm64, with provenance and SBOM manifests. Its digest is `sha256:f6fb37f5…`.
 
 ### Phase 05 — Infrastructure as Code
-Terraform for VPC, security groups, EC2 (or ECS), remote state, `plan` in CI.
+- [x] `CBE-P05-001` Bootstrap stack:
+  - an S3 remote state bucket (versioned, encrypted, private, TLS-only, S3 lock files)
+  - the GitHub OIDC provider
+  - a read-only plan role
+- [x] `CBE-P05-002` App stack:
+  - a dedicated VPC and public subnet
+  - a security group allowing inbound 80 and outbound 443 only
+  - an EC2 host (t4g.small arm64, Amazon Linux 2023, IMDSv2 only, encrypted)
+  - a separate data volume and an Elastic IP
+  - an optional budget alert
+- [x] `CBE-P05-003` Deploy through SSM Run Command:
+  - deploys assume a GitHub OIDC role scoped to the one instance and the `production` environment
+  - no SSH and no stored keys
+  - `scripts/deploy-on-host.sh` is shared by the first boot and the Deploy workflow
+- [x] `CBE-P05-004` Infrastructure workflow:
+  - `fmt`, `validate` and `tflint` on every change
+  - a read-only `plan` once the bootstrap variables are set
+  - Trivy checks the Terraform for misconfiguration
+- [ ] `CBE-P05-005` Create and destroy the environment from Terraform alone *(needs owner approval and an administrator IAM identity; the account currently uses root keys)*
+
 **Acceptance:** environment created and destroyed from Terraform alone.
+
+**Evidence (local, 2026-11-21):**
+- `terraform fmt`, `validate` and `tflint` (with the AWS ruleset) are clean on both stacks.
+- Trivy config has no unaccepted HIGH or CRITICAL findings. The two it raised were handled as follows:
+  - Outbound traffic narrowed to TCP 443.
+  - The state bucket's AWS-managed encryption accepted with a documented reason.
+- `terraform plan` against the account (read-only) gave:
+  - bootstrap: 11 to add, 0 to change, 0 to destroy
+  - app: 18 to add, 0 to change, 0 to destroy
+- No existing resources are touched.
+- The estimated cost is about $18.31/month: [runbook](runbooks/infrastructure.md).
 
 ### Phase 06 — Kubernetes
 Manifests (Deployment, Service, ConfigMap, Secret, Ingress, probes, HPA),

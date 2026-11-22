@@ -1,0 +1,9 @@
+# Copy to terraform.tfvars (git-ignored) and adjust. Every value has a default.
+
+# region             = "us-east-1"
+# instance_type      = "t4g.small"     # arm64, 2 GiB; t4g.micro (1 GiB) is cheaper but tight for PostgreSQL
+# app_ref            = "v1.4.0"        # git ref booted the first time
+# image_tag          = "1.4.0"         # image booted the first time
+# admin_ssh_cidrs    = ["203.0.113.7/32"]  # optional; Session Manager needs no open port
+# budget_alert_email = "you@example.edu"
+# monthly_budget_usd = 20

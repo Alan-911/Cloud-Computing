@@ -1,0 +1,6 @@
+# Terraform backend settings for this stack (see bootstrap output app_backend_config).
+bucket       = "cbe-tfstate-<account-id>-us-east-1"
+key          = "app/production.tfstate"
+region       = "us-east-1"
+encrypt      = true
+use_lockfile = true

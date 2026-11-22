@@ -4,10 +4,10 @@
 #   docker build -f app/Dockerfile -t items-api .
 
 # Slim base: small image, no compiler toolchain shipped to production.
-FROM python:3.12-slim
+FROM python:3.15-slim
 
 # Set by the release workflow from the Git tag; local builds report the code default.
-ARG APP_VERSION=1.3.0-local
+ARG APP_VERSION=1.4.0-local
 ARG APP_REVISION=unknown
 LABEL org.opencontainers.image.title="cloud-native-items-api" \
       org.opencontainers.image.version=$APP_VERSION \
@@ -34,8 +34,14 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Dependencies first so this layer stays cached when only code changes.
+# pip and CPython's bundled ensurepip wheels are only needed to install, so they
+# are removed afterwards: they carry their own vendored copies of urllib3,
+# msgpack and setuptools that the image scanner flags, and nothing at runtime
+# uses them. (Same RUN, so they never persist in a layer.)
 COPY app/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && python -m pip uninstall -y pip \
+    && rm -rf /usr/local/lib/python3.*/ensurepip
 
 # Application package and the migrations that own its schema.
 COPY alembic.ini ./

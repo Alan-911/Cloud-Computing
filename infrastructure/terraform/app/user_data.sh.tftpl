@@ -1,0 +1,70 @@
+#!/bin/bash
+# First-boot setup for the app host (Amazon Linux 2023). Rendered by Terraform.
+# Output: /var/log/cloud-init-output.log
+set -euxo pipefail
+
+APP_DIR=/opt/cloud-computing
+DATA=/data
+
+# The Elastic IP is associated just after the instance starts; wait for egress.
+for _ in $(seq 1 60); do
+  curl -fsS -m 5 -o /dev/null https://github.com && break
+  sleep 5
+done
+
+dnf install -y docker git openssl
+
+# --- Data volume: Docker data-root (PostgreSQL volume) and the app .env ----------------
+# NVMe device names are not stable; find the volume by its serial (the volume ID).
+serial="${replace(data_volume_id, "-", "")}"
+dev=""
+for _ in $(seq 1 60); do
+  dev=$(lsblk -dno NAME,SERIAL | awk -v s="$serial" '$2 == s {print "/dev/" $1}')
+  [ -n "$dev" ] && break
+  sleep 5
+done
+[ -n "$dev" ] || { echo "data volume ${data_volume_id} never attached" >&2; exit 1; }
+
+blkid "$dev" || mkfs.xfs -L cbe-data "$dev" # format only if blank: keeps data on replacement
+mkdir -p "$DATA"
+grep -q "LABEL=cbe-data" /etc/fstab || echo "LABEL=cbe-data $DATA xfs defaults,nofail 0 2" >> /etc/fstab
+mount -a
+mkdir -p "$DATA/docker" "$DATA/secrets"
+chmod 700 "$DATA/secrets"
+
+mkdir -p /etc/docker
+cat > /etc/docker/daemon.json <<JSON
+{
+  "data-root": "$DATA/docker",
+  "log-driver": "json-file",
+  "log-opts": { "max-size": "10m", "max-file": "5" }
+}
+JSON
+systemctl enable --now docker
+
+# --- Docker Compose plugin -------------------------------------------------------------
+plugin_dir=/usr/local/lib/docker/cli-plugins
+mkdir -p "$plugin_dir"
+curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-${arch == "arm64" ? "aarch64" : "x86_64"}" \
+  -o "$plugin_dir/docker-compose"
+chmod +x "$plugin_dir/docker-compose"
+docker compose version
+
+# --- Application -------------------------------------------------------------------------
+if [ ! -d "$APP_DIR/.git" ]; then
+  git clone --quiet "${repo_url}" "$APP_DIR"
+fi
+git -C "$APP_DIR" fetch --quiet --tags origin
+git -C "$APP_DIR" checkout --quiet --detach "${app_ref}"
+
+# The database password is generated on the host and kept on the data volume, so it
+# never appears in Terraform state and survives instance replacement.
+if [ ! -f "$DATA/secrets/app.env" ]; then
+  umask 077
+  cp "$APP_DIR/.env.example" "$DATA/secrets/app.env"
+  sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 24)/" "$DATA/secrets/app.env"
+  sed -i "s/^APP_ENVIRONMENT=.*/APP_ENVIRONMENT=production/" "$DATA/secrets/app.env"
+fi
+ln -sfn "$DATA/secrets/app.env" "$APP_DIR/.env"
+
+IMAGE_TAG="${image_tag}" bash "$APP_DIR/scripts/deploy-on-host.sh"
