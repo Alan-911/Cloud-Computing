@@ -12,6 +12,7 @@ production-oriented backend: tested, containerized, automated, observable and se
 - **Database runbook (migrations, backup, restore):** [`docs/runbooks/database.md`](docs/runbooks/database.md)
 - **CI/CD runbook (pipeline, releases, deploy, rollback):** [`docs/runbooks/ci-cd.md`](docs/runbooks/ci-cd.md)
 - **Infrastructure runbook (Terraform, AWS, cost):** [`docs/runbooks/infrastructure.md`](docs/runbooks/infrastructure.md)
+- **Kubernetes runbook (kind, Gateway API, rollouts):** [`docs/runbooks/kubernetes.md`](docs/runbooks/kubernetes.md)
 - **Original academic submission:** tag `v1.0-academic`, files in [`docs/academic-submission/`](docs/academic-submission/NOTE.md)
 
 ```
@@ -31,7 +32,8 @@ client ──▶ :80 nginx ──▶ api:8000 FastAPI ──▶ db:5432 PostgreS
 | 03 Automated testing | Done |
 | 04 CI/CD | Done |
 | 05 Infrastructure as Code | Done (bootstrap live; app stack created, deployed and destroyed) |
-| 06–10 | Planned |
+| 06 Kubernetes | Done (kind, Gateway API, zero-downtime rollout verified) |
+| 07–10 | Planned |
 
 ## API
 
@@ -74,6 +76,7 @@ app/
   Dockerfile    built from the repo root
 migrations/     Alembic migrations (the only source of the schema)
 infrastructure/ Terraform: bootstrap (state, OIDC) and app (VPC, EC2, IAM)
+kubernetes/     kind cluster, Gateway API, app manifests (Kustomize), migration Job
 tests/          unit and integration tests
 scripts/        tests, smoke test, host deploy, EC2 setup, database backup and restore
 .github/        CI, security, release and deploy workflows; Dependabot

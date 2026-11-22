@@ -1,0 +1,96 @@
+name: Kubernetes
+
+# Validates the manifests, then deploys the app to a throwaway kind cluster and
+# proves a rolling update drops no requests. The image is built from this commit
+# and loaded into kind, so pull requests are tested before anything is published.
+on:
+  pull_request:
+    paths:
+      - "kubernetes/**"
+      - "app/**"
+      - "migrations/**"
+      - "scripts/k8s-*.sh"
+      - "tests/performance/**"
+      - ".github/workflows/kubernetes.yml"
+  push:
+    branches: [main, develop]
+    paths:
+      - "kubernetes/**"
+      - "scripts/k8s-*.sh"
+      - ".github/workflows/kubernetes.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kubernetes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Manifests (kubeconform)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install kubeconform v0.8.0 (checksum verified)
+        run: |
+          base=https://github.com/yannh/kubeconform/releases/download/v0.8.0
+          curl -fsSLO "$base/kubeconform-linux-amd64.tar.gz"
+          curl -fsSL "$base/CHECKSUMS" | grep ' kubeconform-linux-amd64.tar.gz$' | sha256sum -c -
+          tar xzf kubeconform-linux-amd64.tar.gz kubeconform
+      - name: Validate rendered manifests (strict, with Gateway API schemas)
+        run: |
+          crds='https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+          for dir in kubernetes/base kubernetes/migrate; do
+            echo "::group::$dir"
+            kubectl kustomize "$dir" | ./kubeconform -strict -summary \
+              -schema-location default -schema-location "$crds"
+            echo "::endgroup::"
+          done
+          ./kubeconform -strict -summary -schema-location default -schema-location "$crds" \
+            kubernetes/platform/gateway.yaml
+
+  e2e:
+    name: kind deploy and zero-downtime rollout
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: helm/kind-action@ea822c7bf1874f08e5a491df991c228edffc3376 # v1.15.2
+        with:
+          version: v0.33.0
+          install_only: true
+      - name: Build the image from this commit
+        run: |
+          docker build -f app/Dockerfile -t ghcr.io/alan-911/cloud-computing:ci-a \
+            --build-arg "APP_VERSION=ci-${GITHUB_SHA::7}" .
+          # A second tag with a different label, so the rollout replaces every pod.
+          printf 'FROM ghcr.io/alan-911/cloud-computing:ci-a\nLABEL rollout=b\n' \
+            | docker build -t ghcr.io/alan-911/cloud-computing:ci-b -
+      - name: Create the cluster and load the images
+        run: |
+          kind create cluster --config kubernetes/cluster/kind.yaml --wait 120s
+          kind load docker-image --name items ghcr.io/alan-911/cloud-computing:ci-a ghcr.io/alan-911/cloud-computing:ci-b
+      - name: Deploy (PostgreSQL, migrations, API, Gateway)
+        run: bash scripts/k8s-up.sh ci-a
+      - name: Smoke test through the Gateway
+        run: bash scripts/smoke-test.sh http://localhost:8088
+      - name: Network policy blocks direct database access
+        run: |
+          if kubectl -n items run np-check --rm -i --restart=Never --image=busybox:1.37 \
+               --overrides='{"spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":65534,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"np-check","image":"busybox:1.37","command":["nc","-zvw3","postgres","5432"],"securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}'; then
+            echo "::error::An unlabelled pod reached PostgreSQL"; exit 1
+          fi
+          echo "Blocked as expected."
+      - name: Rolling update under load (must drop zero requests)
+        run: bash scripts/k8s-rolling-update.sh ci-b --restart
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide
+          kubectl -n items describe deploy/api | tail -40
+          kubectl -n items logs deploy/api --tail=80 || true
+          kubectl -n items get events --sort-by=.lastTimestamp | tail -40

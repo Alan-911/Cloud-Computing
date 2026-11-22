@@ -18,6 +18,7 @@ manual ──▶ Deploy (environment: production) ──▶ OIDC role ──▶ 
 
 | Workflow | File | Trigger |
 |---|---|---|
+| Kubernetes | `.github/workflows/kubernetes.yml` | Changes to `kubernetes/`, app or migrations: kubeconform, kind deploy, network-policy check, zero-downtime rollout |
 | Infrastructure | `.github/workflows/infra.yml` | Changes under `infrastructure/`: fmt, validate, tflint, read-only plan |
 | CI | `.github/workflows/ci.yml` | Pull requests, manual, called by Release |
 | Security | `.github/workflows/security.yml` | Push to main/develop, pull requests, Mondays 06:17 UTC, manual |

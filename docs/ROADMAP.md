@@ -174,9 +174,53 @@ acceptance criteria, test evidence, documentation updates.
 - **Cost:** about 6 minutes of runtime, a fraction of a cent.
 
 ### Phase 06 — Kubernetes
-Manifests (Deployment, Service, ConfigMap, Secret, Ingress, probes, HPA),
-run on kind/minikube first.
+- [x] `CBE-P06-001` Kustomize manifests (`kubernetes/`) for the database, migrations and API:
+  - PostgreSQL as a StatefulSet with a PVC
+  - the migration Job
+  - the API: a Deployment (3 replicas, startup/readiness/liveness probes), its Service, a ConfigMap, and a Secret generated in the cluster
+- [x] `CBE-P06-002` Traffic through the **Gateway API**:
+  - Envoy Gateway v1.10 serves a `Gateway` plus an `HTTPRoute`
+  - ingress-nginx was archived upstream in March 2026, so it isn't used
+- [x] `CBE-P06-003` Resilience:
+  - rolling update with `maxUnavailable: 0`
+  - `preStop` drain and graceful shutdown
+  - a PodDisruptionBudget (`minAvailable: 2`) and an HPA (3–6 replicas on CPU)
+  - topology spread across nodes
+- [x] `CBE-P06-004` Security:
+  - Pod Security `restricted` enforced on the namespace (non-root, read-only root filesystem, no capabilities, seccomp)
+  - default-deny NetworkPolicies
+  - no service-account tokens mounted
+  - no secrets in git
+- [x] `CBE-P06-005` Automation:
+  - `scripts/k8s-up.sh` deploys in a safe order: database, then migrations, then API
+  - `scripts/k8s-rolling-update.sh` with `tests/performance/rolling_update_probe.py` checks zero downtime
+  - the `kubernetes.yml` workflow runs kubeconform, then a kind deploy, the network-policy check and the zero-downtime rollout on pull requests
+
 **Acceptance:** rolling update with zero failed requests on a local cluster.
+
+**Evidence (local kind v0.33, 3 nodes, 2026-11-22):**
+- **Deploy:** PostgreSQL, then the migration Job (Complete), then 3 API replicas spread over both workers.
+- **Smoke test:** 10/10 through the Gateway at `127.0.0.1:8088`.
+- **Zero-downtime rollout:**
+
+  | | Value |
+  |---|---|
+  | Change | Rollback `sha-5ac5db8` → `1.4.0`, then a forced `rollout restart`; every pod replaced twice |
+  | Traffic | 4 threads of mixed reads and writes for 165 s |
+  | Requests | **28,633, 0 failed** (14,316 list, 7,157 create, 7,160 health) |
+  | Latency | p50 18.5 ms, p95 45.2 ms, p99 86.3 ms, max 498 ms |
+
+- **Autoscaling:** during that run the HPA scaled 3 → 4 → 5 → 6 replicas on CPU (198% of request against a 70% target), without dropping a request.
+- **Earlier run:** the forward update `1.4.0` → `sha-5ac5db8` plus a restart also had 0 failures in 1,749 requests.
+  - Its throughput and latency were distorted by Windows resolving `localhost` IPv6-first (2,048 ms against 8.4 ms for `127.0.0.1`).
+  - The probe now defaults to `127.0.0.1`.
+- **Network policy:**
+  - an unlabelled pod could not reach `postgres:5432`
+  - the same pod labelled `api` could (positive control)
+- **Validation:**
+  - kubeconform (strict, including the Gateway API and EnvoyProxy schemas): 16/16 valid
+  - actionlint: clean
+- **Bug found and fixed:** Envoy Gateway's default `externalTrafficPolicy: Local` meant the kind host port (on the control-plane node) never reached the proxy. It now uses `Cluster`.
 
 ### Phase 07 — Observability and SRE
 `/metrics` endpoint, Prometheus, Grafana dashboards, structured logs with

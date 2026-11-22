@@ -35,3 +35,6 @@ tfplan
 terraform.tfvars
 backend.hcl
 crash.log
+
+# Kubernetes rolling-update probe scratch files
+.k8s-probe.*

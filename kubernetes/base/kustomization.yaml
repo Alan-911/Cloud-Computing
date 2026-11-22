@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: items
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: items
+    includeSelectors: false
+resources:
+  - namespace.yaml
+  - config.yaml
+  - postgres.yaml
+  - api.yaml
+  - network-policy.yaml
+# The migration Job lives in ../migrate and is applied separately (scripts/k8s-up.sh)
+# so it runs to completion before the Deployment changes.
+images:
+  - name: ghcr.io/alan-911/cloud-computing
+    newTag: "1.4.0"
