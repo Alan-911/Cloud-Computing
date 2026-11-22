@@ -13,6 +13,7 @@ production-oriented backend: tested, containerized, automated, observable and se
 - **CI/CD runbook (pipeline, releases, deploy, rollback):** [`docs/runbooks/ci-cd.md`](docs/runbooks/ci-cd.md)
 - **Infrastructure runbook (Terraform, AWS, cost):** [`docs/runbooks/infrastructure.md`](docs/runbooks/infrastructure.md)
 - **Kubernetes runbook (kind, Gateway API, rollouts):** [`docs/runbooks/kubernetes.md`](docs/runbooks/kubernetes.md)
+- **Observability runbook (logs, metrics, SLOs, alerts):** [`docs/runbooks/observability.md`](docs/runbooks/observability.md)
 - **Original academic submission:** tag `v1.0-academic`, files in [`docs/academic-submission/`](docs/academic-submission/NOTE.md)
 
 ```
@@ -33,7 +34,8 @@ client ──▶ :80 nginx ──▶ api:8000 FastAPI ──▶ db:5432 PostgreS
 | 04 CI/CD | Done |
 | 05 Infrastructure as Code | Done (bootstrap live; app stack created, deployed and destroyed) |
 | 06 Kubernetes | Done (kind, Gateway API, zero-downtime rollout verified) |
-| 07–10 | Planned |
+| 07 Observability and SRE | Done (JSON logs, request IDs, Prometheus, Grafana, SLO alerts, drill) |
+| 08–10 | Planned |
 
 ## API
 
@@ -77,6 +79,7 @@ app/
 migrations/     Alembic migrations (the only source of the schema)
 infrastructure/ Terraform: bootstrap (state, OIDC) and app (VPC, EC2, IAM)
 kubernetes/     kind cluster, Gateway API, app manifests (Kustomize), migration Job
+monitoring/     Prometheus config, SLO rules and rule tests; Grafana provisioning and dashboard
 tests/          unit and integration tests
 scripts/        tests, smoke test, host deploy, EC2 setup, database backup and restore
 .github/        CI, security, release and deploy workflows; Dependabot

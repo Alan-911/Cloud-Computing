@@ -7,7 +7,7 @@
 FROM python:3.15-slim
 
 # Set by the release workflow from the Git tag; local builds report the code default.
-ARG APP_VERSION=1.4.0-local
+ARG APP_VERSION=1.5.0-local
 ARG APP_REVISION=unknown
 LABEL org.opencontainers.image.title="cloud-native-items-api" \
       org.opencontainers.image.version=$APP_VERSION \
@@ -64,4 +64,5 @@ HEALTHCHECK --interval=15s --timeout=3s --start-period=10s --retries=3 \
 sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health/live', timeout=2).status == 200 else 1)"
 
 # Exec form, no --reload: one process, signals reach uvicorn, no file watcher.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+# --no-access-log: the app writes its own JSON access log with request IDs.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--no-access-log"]

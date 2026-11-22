@@ -1,0 +1,128 @@
+# promtool unit tests for the SLO rules and alerts:
+#   promtool test rules monitoring/prometheus/tests/api-slo-test.yml
+# Each test feeds synthetic series and asserts exactly which alerts fire.
+
+rule_files:
+  - ../rules/api-slo.yml
+
+evaluation_interval: 15s
+
+tests:
+  # The target disappears: ApiDown must wait out `for: 1m`, then fire.
+  - interval: 15s
+    input_series:
+      - series: 'up{job="api", instance="api:8000"}'
+        values: "1 1 1 1 0x10"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: ApiDown
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: ApiDown
+        exp_alerts:
+          - exp_labels: { severity: critical, job: api, instance: "api:8000" }
+            exp_annotations:
+              summary: "API target api:8000 is down"
+              description: "Prometheus could not scrape the API for more than 1 minute."
+              runbook: docs/runbooks/observability.md#apidown
+
+  # 10% of requests fail for over an hour: far above 14.4 x 0.5% = 7.2%.
+  - interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="api", route="/api/v1/items", method="GET", status="200"}'
+        values: "0+540x90"
+      - series: 'http_requests_total{job="api", route="/api/v1/items", method="GET", status="500"}'
+        values: "0+60x90"
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: ApiErrorBudgetBurnFast
+        exp_alerts:
+          - exp_labels: { severity: critical, job: api }
+            exp_annotations:
+              summary: "API is burning its availability error budget 14x too fast"
+              description: "5xx ratio 10% over 5m and 1h (SLO 99.5%)."
+              runbook: docs/runbooks/observability.md#apierrorbudgetburnfast
+
+  # Healthy service: 0.1% errors (well inside the 0.5% budget) and fast requests.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="api", instance="api:8000"}'
+        values: "1x90"
+      - series: 'http_requests_total{job="api", route="/api/v1/items", method="GET", status="200"}'
+        values: "0+999x90"
+      - series: 'http_requests_total{job="api", route="/api/v1/items", method="GET", status="500"}'
+        values: "0+1x90"
+      - series: 'http_request_duration_seconds_bucket{job="api", le="0.2"}'
+        values: "0+990x90"
+      - series: 'http_request_duration_seconds_count{job="api"}'
+        values: "0+1000x90"
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: ApiDown
+        exp_alerts: []
+      - eval_time: 80m
+        alertname: ApiErrorBudgetBurnFast
+        exp_alerts: []
+      - eval_time: 80m
+        alertname: ApiLatencySLOBreach
+        exp_alerts: []
+    promql_expr_test:
+      - expr: round(job:http_error_ratio:rate1h, 0.0001)
+        eval_time: 80m
+        exp_samples:
+          - labels: '{job="api"}'
+            value: 0.001
+      - expr: round(job:http_slow_ratio:rate1h, 0.0001)
+        eval_time: 80m
+        exp_samples:
+          - labels: '{job="api"}'
+            value: 0.01
+
+  # 20% of requests slower than 200 ms for over an hour.
+  - interval: 1m
+    input_series:
+      - series: 'http_request_duration_seconds_bucket{job="api", le="0.2"}'
+        values: "0+800x90"
+      - series: 'http_request_duration_seconds_count{job="api"}'
+        values: "0+1000x90"
+    alert_rule_test:
+      - eval_time: 80m
+        alertname: ApiLatencySLOBreach
+        exp_alerts:
+          - exp_labels: { severity: warning, job: api }
+            exp_annotations:
+              summary: "More than 5% of API requests take longer than 200 ms"
+              description: "20% of requests over 200 ms (SLO: at most 5%)."
+              runbook: docs/runbooks/observability.md#apilatencyslobreach
+
+  # Pool pinned at 10/10 connections for 6 minutes.
+  - interval: 1m
+    input_series:
+      - series: 'db_pool_connections_in_use{job="api", instance="api:8000"}'
+        values: "10x10"
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: ApiDbPoolSaturated
+        exp_alerts:
+          - exp_labels: { severity: warning, job: api, instance: "api:8000" }
+            exp_annotations:
+              summary: "API database pool nearly exhausted on api:8000"
+              description: "10 of 10 connections (pool 5 + overflow 5) in use for 5 minutes."
+              runbook: docs/runbooks/observability.md#apidbpoolsaturated
+
+  # No 5xx at all: the error ratio must be 0, not missing (regression test).
+  - interval: 1m
+    input_series:
+      - series: 'http_requests_total{job="api", route="/api/v1/items", method="GET", status="200"}'
+        values: "0+600x90"
+    promql_expr_test:
+      - expr: job:http_error_ratio:rate5m
+        eval_time: 30m
+        exp_samples:
+          - labels: 'job:http_error_ratio:rate5m{job="api"}'
+            value: 0
+      - expr: job:http_error_ratio:rate1h
+        eval_time: 80m
+        exp_samples:
+          - labels: 'job:http_error_ratio:rate1h{job="api"}'
+            value: 0

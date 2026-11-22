@@ -36,6 +36,38 @@ jobs:
       - run: ruff check --output-format=github .
       - run: ruff format --check .
 
+  monitoring:
+    name: Monitoring config (promtool)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      PROMETHEUS_IMAGE: prom/prometheus:v3.16.0
+    steps:
+      - uses: actions/checkout@v7
+      - name: Prometheus config and rules are valid
+        run: |
+          docker run --rm --entrypoint promtool -v "$PWD/monitoring/prometheus:/p" "$PROMETHEUS_IMAGE" \
+            check config /p/prometheus.yml
+      - name: Alert and SLO rule unit tests
+        run: |
+          docker run --rm --entrypoint promtool -v "$PWD/monitoring/prometheus:/p" -w /p/tests \
+            "$PROMETHEUS_IMAGE" test rules api-slo-test.yml
+      - name: Grafana dashboard is valid JSON with every panel on the Prometheus datasource
+        run: |
+          python3 - <<'PY'
+          import json
+          d = json.load(open("monitoring/grafana/dashboards/items-api.json"))
+          panels = [p for p in d["panels"] if p["type"] != "row"]
+          assert panels, "no panels"
+          bad = [p["title"] for p in panels if p.get("datasource", {}).get("uid") != "prometheus"]
+          assert not bad, f"panels without the Prometheus datasource: {bad}"
+          print(f"{len(panels)} panels OK")
+          PY
+      - name: Compose overlay resolves
+        run: |
+          printf 'POSTGRES_PASSWORD=x\nGRAFANA_ADMIN_PASSWORD=x\n' > .env
+          docker compose -f docker-compose.yml -f docker-compose.observability.yml config --quiet
+
   test:
     name: Tests (${{ matrix.database }})
     runs-on: ubuntu-24.04

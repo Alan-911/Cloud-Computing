@@ -11,9 +11,13 @@ class Settings(BaseSettings):
 
     name: str = "Cloud-Native Items API"
     # Overridden in images by APP_VERSION (set from the release tag at build time).
-    version: str = "1.4.0"
+    version: str = "1.5.0"
     environment: Literal["development", "test", "staging", "production"] = "development"
     debug: bool = False
+
+    # Logging: one JSON object per line by default; "text" is easier to read locally.
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    log_format: Literal["json", "text"] = "json"
 
     # SQLAlchemy URL. Compose and Kubernetes set a PostgreSQL URL, e.g.
     # postgresql+psycopg://app:<password>@db:5432/app. SQLite is for quick local runs.

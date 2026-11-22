@@ -223,9 +223,59 @@ acceptance criteria, test evidence, documentation updates.
 - **Bug found and fixed:** Envoy Gateway's default `externalTrafficPolicy: Local` meant the kind host port (on the control-plane node) never reached the proxy. It now uses `Cluster`.
 
 ### Phase 07 — Observability and SRE
-`/metrics` endpoint, Prometheus, Grafana dashboards, structured logs with
-request IDs, alert rules, SLOs.
+- [x] `CBE-P07-001` Request IDs:
+  - taken from the client's `X-Request-ID` (validated) or generated, then echoed back
+  - nginx passes them through, so the proxy and app logs share one ID
+  - a crash traceback keeps the ID of the request that crashed
+- [x] `CBE-P07-002` Structured JSON logs (app and nginx):
+  - one access log line per request, with route template, status, duration and client
+  - uvicorn's duplicate access log is turned off
+- [x] `CBE-P07-003` Prometheus metrics at `/metrics` (internal only):
+  - RED by route template: rate, errors and latency histogram
+  - saturation: requests in progress, DB pool use, process CPU and memory
+  - `app_info` (which build is running)
+- [x] `CBE-P07-004` SLOs: 99.5% availability and 95% of requests under 200 ms:
+  - recording rules plus multi-window burn-rate alerts
+  - `ApiDown` and DB-pool saturation alerts
+  - every alert links to a [runbook](runbooks/observability.md) section
+  - promtool unit tests, run in CI
+- [x] `CBE-P07-005` Prometheus 3.16 and Grafana 13.3:
+  - added through `docker-compose.observability.yml`, listening on localhost only
+  - Grafana datasource and a 14-panel dashboard are provisioned as code
+
 **Acceptance:** latency, error rate and saturation visible; one alert fires in a drill.
+
+**Evidence (2026-11-22):**
+- **Tests:**
+  - 90 tests passed, with 99% branch coverage
+  - new tests cover request IDs, JSON logs, metric labels by route template (no per-ID series), the 500 path, and logging set-up
+  - `promtool test rules` passes 6 scenarios, including a regression test for the zero-errors case
+- **Request tracing:** `X-Request-ID: demo-trace-001` was echoed in the response and appeared in both the nginx and API JSON log lines. `/metrics` isn't reachable through nginx.
+- **Visibility:** after real traffic, Grafana returned data for **14/14 panels**, including:
+  - availability 100%, with error budget 100% left
+  - 98% of requests under 200 ms, p95 about 92 ms
+  - request rate by route
+  - DB pool use, CPU and RSS of about 98 MB
+- **Alert drill:**
+
+  | Time (UTC) | Event |
+  |---|---|
+  | 21:55:09 | API stopped |
+  | 21:55:52 | `ApiDown` pending |
+  | **21:56:53** | **`ApiDown` firing** |
+  | 21:56:58 | API restarted |
+  | 21:58:04 | Alert cleared; API returned 200 |
+
+- **Bugs found and fixed:**
+  - The route label dropped router prefixes (`/items/{item_id}` instead of `/api/v1/items/{item_id}`).
+  - The error ratio showed no data instead of 0 when there were no 5xx responses.
+  - `configure_logging` removed handlers it didn't own.
+  - Healthchecks used `localhost`, which resolves to IPv6 on Alpine.
+- **Open finding for Phase 09:**
+  - **What:** on the Compose stack under Docker Desktop, 0.2% of requests (27/12,188) took over 1 s. They came in clusters of 5–7 s stalls in which the server still returned 200.
+  - **Ruled out:** PostgreSQL checkpoints and memory pressure.
+  - **Leads:** embedded DNS shows p99 lookups of 257 ms.
+  - **Not seen on Kubernetes:** max 498 ms over 28,633 requests.
 
 ### Phase 08 — Security engineering
 Dependency and image scanning, secret management, HTTPS, rate limiting,

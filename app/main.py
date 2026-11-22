@@ -8,6 +8,13 @@ from fastapi import FastAPI
 from app.api.router import api_router
 from app.core.config import Settings, get_settings
 from app.core.errors import register_error_handlers
+from app.core.logging import configure_logging
+from app.core.observability import (
+    APP_INFO,
+    DB_POOL_IN_USE,
+    ObservabilityMiddleware,
+    metrics_endpoint,
+)
 from app.database.session import Database
 
 DESCRIPTION = """
@@ -21,6 +28,7 @@ Every error uses one envelope:
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
+    configure_logging(settings.log_level, settings.log_format)
     db = Database(settings)
 
     @asynccontextmanager
@@ -48,6 +56,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.db = db
     register_error_handlers(app)
     app.include_router(api_router, prefix=prefix)
+
+    # Observability: request IDs, JSON access logs and Prometheus metrics.
+    app.add_middleware(ObservabilityMiddleware)
+    app.add_route("/metrics", metrics_endpoint, include_in_schema=False)
+    APP_INFO.labels(settings.version, settings.environment).set(1)
+    pool = db.engine.pool
+    if hasattr(pool, "checkedout"):
+        DB_POOL_IN_USE.set_function(pool.checkedout)
     return app
 
 
