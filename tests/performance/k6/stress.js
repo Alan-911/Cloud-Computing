@@ -14,6 +14,11 @@
 import http from "k6/http";
 import { check } from "k6";
 import exec from "k6/execution";
+import { Rate } from "k6/metrics";
+
+// 503 = shed by the API (fast rejection at capacity); ok = served successfully.
+const shed = new Rate("shed");
+const ok = new Rate("served_ok");
 
 const BASE = (__ENV.BASE_URL || "http://api:8000").replace(/\/$/, "");
 const API = `${BASE}/api`;
@@ -36,6 +41,8 @@ for (const rate of BANDS) {
   thresholds[`http_req_duration{band:${rate}}`] = ["p(95)<60000"];
   thresholds[`http_req_failed{band:${rate}}`] = ["rate<=1"];
   thresholds[`http_reqs{band:${rate}}`] = ["count>=0"];
+  thresholds[`shed{band:${rate}}`] = ["rate<=1"];
+  thresholds[`served_ok{band:${rate}}`] = ["rate<=1"];
 }
 
 export const options = {
@@ -76,33 +83,37 @@ export function setup() {
 
 export default function (data) {
   const tags = { band: band() };
+  const p = { tags, timeout: "10s" };
+  const w = { tags, timeout: "10s", headers: WRITE_HEADERS };
   const id = data.ids[Math.floor(Math.random() * data.ids.length)];
   const roll = Math.random();
   let r;
-  if (roll < 0.6) r = http.get(`${API}/v1/items/${id}`, { tags });
-  else if (roll < 0.85) r = http.get(`${API}/v1/items?limit=20`, { tags });
+  if (roll < 0.6) r = http.get(`${API}/v1/items/${id}`, p);
+  else if (roll < 0.85) r = http.get(`${API}/v1/items?limit=20`, p);
   else if (roll < 0.95)
-    r = http.post(`${API}/v1/items`, JSON.stringify({ name: `s-${exec.vu.idInTest}-${exec.scenario.iterationInTest}` }), {
-      headers: WRITE_HEADERS,
-      tags,
-    });
-  else r = http.patch(`${API}/v1/items/${id}`, JSON.stringify({ description: "x" }), { headers: WRITE_HEADERS, tags });
+    r = http.post(`${API}/v1/items`, JSON.stringify({ name: `s-${exec.vu.idInTest}-${exec.scenario.iterationInTest}` }), w);
+  else r = http.patch(`${API}/v1/items/${id}`, JSON.stringify({ description: "x" }), w);
   check(r, { "2xx": (x) => x.status >= 200 && x.status < 300 });
+  shed.add(r.status === 503, tags);
+  ok.add(r.status >= 200 && r.status < 300, tags);
 }
 
 export function handleSummary(data) {
   const m = data.metrics;
-  const rows = ["", "Capacity (per sustained rate band):", "  target    reqs    p50 ms   p95 ms   p99 ms   failed"];
+  const rows = ["", "Capacity (per sustained rate band):", "  target    reqs    p50 ms   p95 ms   p99 ms   failed   shed(503)  served/s"];
   for (const rate of BANDS) {
     const d = m[`http_req_duration{band:${rate}}`];
     const f = m[`http_req_failed{band:${rate}}`];
     const n = m[`http_reqs{band:${rate}}`];
+    const sh = m[`shed{band:${rate}}`];
+    const okr = m[`served_ok{band:${rate}}`];
+    const servedPerS = n && okr ? ((n.values.count * okr.values.rate) / STEP).toFixed(0) : "-";
     if (!d) continue;
     const v = d.values;
     rows.push(
       `  ${String(rate).padStart(4)}/s  ${String(n ? n.values.count : "-").padStart(6)}  ${v.med.toFixed(1).padStart(7)}  ${v["p(95)"]
         .toFixed(1)
-        .padStart(7)}  ${v["p(99)"].toFixed(1).padStart(7)}   ${((f ? f.values.rate : 0) * 100).toFixed(2)}%`,
+        .padStart(7)}  ${v["p(99)"].toFixed(1).padStart(7)}   ${((f ? f.values.rate : 0) * 100).toFixed(2).padStart(6)}%   ${((sh ? sh.values.rate : 0) * 100).toFixed(1).padStart(6)}%   ${String(servedPerS).padStart(7)}`,
     );
   }
   rows.push(`  dropped iterations (load generator could not keep up): ${m.dropped_iterations ? m.dropped_iterations.values.count : 0}`, "");

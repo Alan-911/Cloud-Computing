@@ -155,3 +155,62 @@ class ObservabilityMiddleware:
 
 def metrics_endpoint(_: Request) -> Response:
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+SHED_REQUESTS = Counter(
+    "http_requests_shed_total",
+    "Requests rejected with 503 because the in-flight limit was reached (load shedding).",
+)
+_SHED_EXEMPT_SUFFIXES = ("/health", "/health/live", "/health/ready", "/metrics")
+
+
+class LoadSheddingMiddleware:
+    """Reject work beyond a fixed concurrency limit instead of queueing it.
+
+    Without a limit, a process past its capacity keeps accepting requests; they queue
+    without bound, every request (including ones it could have served) waits until
+    clients time out, and throughput collapses. With a limit, excess requests get an
+    immediate 503 + Retry-After, and admitted requests keep normal latency.
+
+    Health checks and /metrics are exempt: failing liveness under load would restart
+    a busy pod, and failing readiness would remove capacity exactly when it is needed.
+    The event loop is single-threaded, so a plain counter is race-free.
+    """
+
+    def __init__(self, app: ASGIApp, limit: int) -> None:
+        self.app = app
+        self.limit = limit
+        self.in_flight = 0
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if (
+            scope["type"] != "http"
+            or self.limit <= 0
+            or scope.get("path", "").endswith(_SHED_EXEMPT_SUFFIXES)
+        ):
+            await self.app(scope, receive, send)
+            return
+        if self.in_flight >= self.limit:
+            SHED_REQUESTS.inc()
+            body = (
+                b'{"error":{"code":"overloaded","message":"The service is at capacity;'
+                b' retry shortly.","details":null}}'
+            )
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 503,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"content-length", str(len(body)).encode()),
+                        (b"retry-after", b"1"),
+                    ],
+                }
+            )
+            await send({"type": "http.response.body", "body": body})
+            return
+        self.in_flight += 1
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            self.in_flight -= 1

@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     db_connect_timeout: int = 5
     db_statement_timeout_ms: int = 5000
 
+    # Load shedding: requests in flight beyond this get an immediate 503 instead of
+    # queueing until clients time out. Sized for one process (one CPU core); scale
+    # out with replicas. 0 disables. Health checks and /metrics are exempt.
+    max_concurrent_requests: int = 64
+
     api_prefix: str = "/api"
     default_page_size: int = 20
     max_page_size: int = 100

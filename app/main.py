@@ -12,6 +12,7 @@ from app.core.logging import configure_logging
 from app.core.observability import (
     APP_INFO,
     DB_POOL_IN_USE,
+    LoadSheddingMiddleware,
     ObservabilityMiddleware,
     metrics_endpoint,
 )
@@ -60,6 +61,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Security headers on every response, then observability (outermost) so the
     # access log and metrics also cover responses produced by inner layers.
+    # Starlette runs the last-added middleware outermost. Outer to inner:
+    # observability (logs and counts everything, shed requests included) ->
+    # security headers (on every response, 503s included) -> load shedding (rejects
+    # excess before any work is done) -> the app.
+    app.add_middleware(LoadSheddingMiddleware, limit=settings.max_concurrent_requests)
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(ObservabilityMiddleware)
     app.add_route("/metrics", metrics_endpoint, include_in_schema=False)
