@@ -11,6 +11,7 @@ resources:
   - postgres.yaml
   - api.yaml
   - network-policy.yaml
+  - rate-limit.yaml
 # The migration Job lives in ../migrate and is applied separately (scripts/k8s-up.sh)
 # so it runs to completion before the Deployment changes.
 images:

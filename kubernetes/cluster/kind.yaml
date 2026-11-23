@@ -10,6 +10,16 @@ apiVersion: kind.x-k8s.io/v1alpha4
 name: items
 nodes:
   - role: control-plane
+    # etcd data on tmpfs (/tmp in kind nodes). On Docker Desktop the VM's disk can
+    # stall fsync for over a second; etcd then misses deadlines and the scheduler and
+    # controller-manager lose leader election and crash-loop. This cluster is
+    # disposable, so keeping its state in memory costs nothing.
+    kubeadmConfigPatches:
+      - |
+        kind: ClusterConfiguration
+        etcd:
+          local:
+            dataDir: /tmp/etcd
     extraPortMappings:
       - containerPort: 30080
         hostPort: 8088

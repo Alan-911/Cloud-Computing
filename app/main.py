@@ -15,6 +15,7 @@ from app.core.observability import (
     ObservabilityMiddleware,
     metrics_endpoint,
 )
+from app.core.security import SecurityHeadersMiddleware
 from app.database.session import Database
 
 DESCRIPTION = """
@@ -57,7 +58,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_error_handlers(app)
     app.include_router(api_router, prefix=prefix)
 
-    # Observability: request IDs, JSON access logs and Prometheus metrics.
+    # Security headers on every response, then observability (outermost) so the
+    # access log and metrics also cover responses produced by inner layers.
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(ObservabilityMiddleware)
     app.add_route("/metrics", metrics_endpoint, include_in_schema=False)
     APP_INFO.labels(settings.version, settings.environment).set(1)

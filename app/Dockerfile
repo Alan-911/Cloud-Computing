@@ -65,4 +65,4 @@ sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health/live', ti
 
 # Exec form, no --reload: one process, signals reach uvicorn, no file watcher.
 # --no-access-log: the app writes its own JSON access log with request IDs.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--no-access-log"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--no-access-log", "--no-server-header"]

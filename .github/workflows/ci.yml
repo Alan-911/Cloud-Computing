@@ -137,11 +137,32 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Start the stack (db -> migrate -> api -> nginx)
         run: |
-          printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 16)" > .env
+          # Production mode rejects writes without a configured key (fail closed),
+          # so generate one: the hash goes to the API, the key to the smoke test.
+          keys="$(bash scripts/new-api-key.sh)"
+          key="$(printf '%s\n' "$keys" | sed -n 's/^API_KEY=//p')"
+          echo "::add-mask::$key"
+          printf '%s\n' "$key" > .ci-api-key
+          {
+            printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 16)"
+            printf '%s\n' "$keys" | grep '^APP_API_KEY_HASHES='
+          } > .env
           docker compose up -d --no-build --wait --wait-timeout 120
           docker compose ps -a
-      - name: Smoke test through nginx
-        run: bash scripts/smoke-test.sh http://localhost
+      - name: Smoke test through nginx (with and without the API key)
+        run: API_KEY="$(cat .ci-api-key)" bash scripts/smoke-test.sh http://localhost
+      - name: Security headers and hardening are in place
+        run: |
+          headers="$(curl -s -D - -o /dev/null http://localhost/api/health)"
+          for h in x-content-type-options x-frame-options content-security-policy referrer-policy; do
+            grep -qi "^$h:" <<< "$headers" || { echo "::error::missing header $h"; exit 1; }
+          done
+          if grep -qiE '^server: .*[0-9]' <<< "$headers"; then
+            echo "::error::server version disclosed"; exit 1
+          fi
+          test "$(docker inspect items_api --format '{{.HostConfig.ReadonlyRootfs}}')" = true
+          docker inspect items_api --format '{{.HostConfig.CapDrop}}' | grep -q ALL
+          echo "Headers present; API container is read-only with all capabilities dropped."
       - name: API and database are not published to the host
         run: |
           if curl -s -m 3 http://localhost:8000/api/health; then
@@ -153,7 +174,8 @@ jobs:
           echo "Only nginx is published."
       - name: Data survives a full restart
         run: |
-          curl -sf -X POST http://localhost/api/v1/items -H 'Content-Type: application/json' -d '{"name":"persist-check"}'
+          curl -sf -X POST http://localhost/api/v1/items -H 'Content-Type: application/json' \
+            -H "X-API-Key: $(cat .ci-api-key)" -d '{"name":"persist-check"}'
           docker compose down
           docker compose up -d --no-build --wait --wait-timeout 120
           curl -sf http://localhost/api/v1/items | grep -q '"name":"persist-check"'

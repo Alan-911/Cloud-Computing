@@ -76,7 +76,12 @@ if [ ! -f .env ]; then
     cp .env.example .env
     sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 24)/" .env
     sed -i "s/^APP_ENVIRONMENT=.*/APP_ENVIRONMENT=production/" .env
+    keys="$(bash scripts/new-api-key.sh)"
+    key_hash_line="$(printf '%s\n' "$keys" | grep '^APP_API_KEY_HASHES=')"
+    sed -i "s/^APP_API_KEY_HASHES=.*/${key_hash_line}/" .env
+    (umask 077; printf '%s\n' "$keys" | sed -n 's/^API_KEY=//p' > .api-key)
     chmod 600 .env
+    echo "API write key saved to $APP_DIR/.api-key (keep it secret; the server only stores its hash)"
 fi
 
 say "Building and starting the stack"
@@ -101,7 +106,7 @@ say "Container status"
 sudo docker compose ps
 
 say "Smoke test through the proxy"
-bash scripts/smoke-test.sh http://localhost
+API_KEY="$(cat .api-key 2>/dev/null || true)" bash scripts/smoke-test.sh http://localhost
 
 say "Done"
 echo "Public URL: http://$(curl -fsS --max-time 5 http://169.254.169.254/latest/meta-data/public-ipv4 \

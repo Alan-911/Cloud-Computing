@@ -76,8 +76,8 @@ jobs:
           kind load docker-image --name items ghcr.io/alan-911/cloud-computing:ci-a ghcr.io/alan-911/cloud-computing:ci-b
       - name: Deploy (PostgreSQL, migrations, API, Gateway)
         run: bash scripts/k8s-up.sh ci-a
-      - name: Smoke test through the Gateway
-        run: bash scripts/smoke-test.sh http://localhost:8088
+      - name: Smoke test through the Gateway (with and without the API key)
+        run: API_KEY="$(cat .k8s-api-key)" bash scripts/smoke-test.sh http://localhost:8088
       - name: Network policy blocks direct database access
         run: |
           if kubectl -n items run np-check --rm -i --restart=Never --image=busybox:1.37 \

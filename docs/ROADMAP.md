@@ -278,9 +278,56 @@ acceptance criteria, test evidence, documentation updates.
   - **Not seen on Kubernetes:** max 498 ms over 28,633 requests.
 
 ### Phase 08 — Security engineering
-Dependency and image scanning, secret management, HTTPS, rate limiting,
-security headers, authentication for write endpoints, threat model.
+- [x] `CBE-P08-001` [Threat model](security/threat-model.md):
+  - STRIDE analysis per trust boundary
+  - every control, accepted risk and open item recorded
+  - plus a [security guide](security/README.md) and a `SECURITY.md` reporting policy
+- [x] `CBE-P08-002` API-key authentication on writes:
+  - reads stay public; POST, PUT, PATCH and DELETE need a key
+  - only SHA-256 hashes are stored, compared in constant time
+  - production and staging **fail closed** without keys
+  - the key is checked before the request body
+  - `scripts/new-api-key.sh` generates keys; rotation is documented
+- [x] `CBE-P08-003` Security headers and banner:
+  - headers: CSP, `X-Frame-Options`, nosniff, `Referrer-Policy`, CORP, `Permissions-Policy`, `no-store`
+  - no `Server` header from the API; nginx `server_tokens off`
+- [x] `CBE-P08-004` HTTPS and rate limiting:
+  - TLS overlay: TLS 1.2/1.3 only, HSTS, redirect from HTTP
+  - nginx per-IP limits: 300 r/s, plus 100 r/s for writes, with a JSON 429 and `Retry-After`
+  - body, connection and timeout limits
+  - Envoy `BackendTrafficPolicy` on Kubernetes
+- [x] `CBE-P08-005` Hardening and scanning:
+  - containers run read-only, drop all capabilities, and block privilege escalation
+  - CodeQL (Python and Actions) and dependency review on pull requests
+  - CI checks the headers, the hardening, and that an anonymous write gets 401
+
 **Acceptance:** zero unresolved critical findings; threat model documented.
+
+**Evidence (2026-11-23):**
+- **Findings:**
+  - Trivy image: **0 critical**; all 21 HIGH have no upstream fix (`affected` / `fix_deferred`), and each is recorded with a decision in the threat model
+  - pip-audit 0, secret scanning 0, Trivy IaC: no unaccepted HIGH or CRITICAL
+- **Tests:** 111 pass, with 99.48% branch coverage. New tests cover:
+  - all four write methods returning 401 without a key
+  - Bearer and header keys, and key rotation
+  - fail-closed in staging and production
+  - rejected keys logged without the key itself
+  - headers on every path, and the docs page exempted from CSP
+- **TLS:** with `openssl s_client`, TLS 1.0 and 1.1 were refused and TLS 1.2 and 1.3 negotiated. HTTP gave a 301 to HTTPS, and HSTS was present.
+- **Smoke test over HTTPS with a key:** 11/11, including the anonymous write getting 401.
+- **Rate limit:** a burst of 4,000 requests at 1,807 req/s gave 1,252 × 200 (≈ 600 burst + 300/s × 2.2 s) and 2,748 × 429 with JSON and `Retry-After`. Service recovered within 3 s.
+- **Hardening, inside the running containers:**
+  - API: read-only root filesystem, `CapEff` = 0, `NoNewPrivs` = 1, uid 10001
+  - nginx: 4 capabilities only
+- **Kubernetes:**
+  - On kind, the smoke test with the key passed through the Gateway (including the anonymous-write 401), and the `BackendTrafficPolicy` was accepted.
+  - The full zero-downtime rollout with auth enabled could not finish locally. The Docker Desktop VM's disk stalls etcd (`slow fdatasync` over 1 s), and the scheduler and controller-manager then crash-loop.
+  - `kind.yaml` now keeps etcd on tmpfs. The rollout check runs in the Kubernetes CI workflow on GitHub's Linux runners.
+- **Bugs found and fixed:**
+  - On Windows, the key script hashed a value ending in ``.
+  - The dev CA lacked `keyUsage`, so Python's strict TLS verification rejected it.
+  - nginx needed `CHOWN` to run with a read-only root filesystem.
+- **Open, owner action:** delete the AWS root access keys.
 
 ### Phase 09 — Performance and reliability
 Load tests (`tests/performance/`), p95 baseline, replica scaling, failure

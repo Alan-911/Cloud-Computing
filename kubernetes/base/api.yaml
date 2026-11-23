@@ -53,6 +53,10 @@ spec:
               valueFrom: { secretKeyRef: { name: db-credentials, key: POSTGRES_PASSWORD } }
             - name: APP_DATABASE_URL
               value: postgresql+psycopg://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@$(DB_HOST):5432/$(POSTGRES_DB)
+            # Hashes of valid write keys (Secret created by scripts/k8s-up.sh).
+            # Without it the API would reject every write (fail closed).
+            - name: APP_API_KEY_HASHES
+              valueFrom: { secretKeyRef: { name: api-auth, key: APP_API_KEY_HASHES } }
           startupProbe:
             httpGet: { path: /api/health/live, port: http }
             periodSeconds: 2

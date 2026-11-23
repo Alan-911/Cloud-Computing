@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     log_format: Literal["json", "text"] = "json"
 
+    # Comma-separated SHA-256 hashes of valid API keys (never the keys themselves).
+    # See app/core/security.py for the write-access policy.
+    api_key_hashes: str = ""
+
     # SQLAlchemy URL. Compose and Kubernetes set a PostgreSQL URL, e.g.
     # postgresql+psycopg://app:<password>@db:5432/app. SQLite is for quick local runs.
     database_url: str = "sqlite:///./app.db"

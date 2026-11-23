@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import collections
 import json
+import os
 import threading
 import time
 import urllib.error
@@ -26,11 +27,13 @@ import urllib.request
 import uuid
 
 
-def request(method: str, url: str, body: dict | None, timeout: float) -> int:
+def request(method: str, url: str, body: dict | None, timeout: float, api_key: str = "") -> int:
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method)
     if data is not None:
         req.add_header("Content-Type", "application/json")
+    if api_key and method != "GET":
+        req.add_header("X-API-Key", api_key)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             resp.read()
@@ -39,7 +42,14 @@ def request(method: str, url: str, body: dict | None, timeout: float) -> int:
         return exc.code
 
 
-def worker(base: str, stop: threading.Event, stats: dict, lock: threading.Lock, timeout: float):
+def worker(
+    base: str,
+    stop: threading.Event,
+    stats: dict,
+    lock: threading.Lock,
+    timeout: float,
+    api_key: str = "",
+):
     api = base.rstrip("/") + "/api"
     i = 0
     while not stop.is_set():
@@ -57,7 +67,7 @@ def worker(base: str, stop: threading.Event, stats: dict, lock: threading.Lock, 
             op, method, url, body = "list", "GET", f"{api}/v1/items?limit=5", None
         started = time.perf_counter()
         try:
-            status = request(method, url, body, timeout)
+            status = request(method, url, body, timeout, api_key)
             ok = 200 <= status < 300
             outcome = str(status)
         except Exception as exc:  # connection reset, refused, timeout
@@ -84,6 +94,11 @@ def main() -> int:
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--timeout", type=float, default=5.0)
     parser.add_argument("--stop-file", help="stop early when this file exists")
+    parser.add_argument(
+        "--api-key",
+        default=os.environ.get("API_KEY", ""),
+        help="key for write requests (default: $API_KEY)",
+    )
     args = parser.parse_args()
 
     stats = {
@@ -99,7 +114,9 @@ def main() -> int:
     stop = threading.Event()
     threads = [
         threading.Thread(
-            target=worker, args=(args.url, stop, stats, lock, args.timeout), daemon=True
+            target=worker,
+            args=(args.url, stop, stats, lock, args.timeout, args.api_key),
+            daemon=True,
         )
         for _ in range(args.workers)
     ]

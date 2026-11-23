@@ -27,6 +27,12 @@ result_file=".k8s-probe.json"
 rm -f "$stop_file"
 trap 'rm -f "$stop_file"' EXIT
 
+# Write key created by k8s-up.sh (the probe sends it on POST requests).
+if [ -z "${API_KEY:-}" ] && [ -f .k8s-api-key ]; then
+    API_KEY="$(cat .k8s-api-key)"
+fi
+export API_KEY="${API_KEY:-}"
+
 echo "==> Starting traffic probe against $URL"
 "$py" tests/performance/rolling_update_probe.py --url "$URL" --duration 900 \
     --workers 4 --stop-file "$stop_file" > "$result_file" &

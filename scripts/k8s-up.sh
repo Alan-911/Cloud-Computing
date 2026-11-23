@@ -56,7 +56,14 @@ render kubernetes/base | kubectl apply -l 'app.kubernetes.io/name notin (api)' -
 if ! kubectl -n "$NS" get secret db-credentials > /dev/null 2>&1; then
     say "Generating the database password (stored only in the cluster Secret)"
     kubectl -n "$NS" create secret generic db-credentials \
-        --from-literal=POSTGRES_PASSWORD="$(openssl rand -hex 24)"
+        --from-literal=POSTGRES_PASSWORD="$(openssl rand -hex 24 | tr -d '\r')"
+fi
+if ! kubectl -n "$NS" get secret api-auth > /dev/null 2>&1; then
+    say "Generating the API write key (hash in the cluster Secret, key in .k8s-api-key)"
+    keys="$(bash scripts/new-api-key.sh)"
+    key_hash="$(printf '%s\n' "$keys" | sed -n 's/^APP_API_KEY_HASHES=//p')"
+    kubectl -n "$NS" create secret generic api-auth --from-literal=APP_API_KEY_HASHES="$key_hash"
+    (umask 077; printf '%s\n' "$keys" | sed -n 's/^API_KEY=//p' > .k8s-api-key)
 fi
 kubectl -n "$NS" rollout status statefulset/postgres --timeout=180s
 
@@ -72,7 +79,7 @@ say "Rolling out the API at ${TAG}"
 render kubernetes/base | kubectl apply -f -
 kubectl -n "$NS" rollout status deploy/api --timeout=300s
 
-say "Ready"
+say "Ready (write key for scripts: .k8s-api-key)"
 kubectl -n "$NS" get pods -o wide
 curl -fsS -m 5 --retry 15 --retry-delay 2 --retry-all-errors http://localhost:8088/api/health
 echo

@@ -18,11 +18,18 @@ logger = logging.getLogger(__name__)
 class AppError(Exception):
     status_code = status.HTTP_400_BAD_REQUEST
     code = "bad_request"
+    headers: dict[str, str] | None = None
 
     def __init__(self, message: str, details: Any = None) -> None:
         super().__init__(message)
         self.message = message
         self.details = details
+
+
+class UnauthorizedError(AppError):
+    status_code = status.HTTP_401_UNAUTHORIZED
+    code = "unauthorized"
+    headers = {"WWW-Authenticate": 'ApiKey header="X-API-Key"'}
 
 
 class NotFoundError(AppError):
@@ -55,7 +62,9 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def handle_app_error(_: Request, exc: AppError) -> JSONResponse:
         return JSONResponse(
-            error_body(exc.code, exc.message, exc.details), status_code=exc.status_code
+            error_body(exc.code, exc.message, exc.details),
+            status_code=exc.status_code,
+            headers=exc.headers,
         )
 
     @app.exception_handler(RequestValidationError)

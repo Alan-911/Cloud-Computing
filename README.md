@@ -14,6 +14,7 @@ production-oriented backend: tested, containerized, automated, observable and se
 - **Infrastructure runbook (Terraform, AWS, cost):** [`docs/runbooks/infrastructure.md`](docs/runbooks/infrastructure.md)
 - **Kubernetes runbook (kind, Gateway API, rollouts):** [`docs/runbooks/kubernetes.md`](docs/runbooks/kubernetes.md)
 - **Observability runbook (logs, metrics, SLOs, alerts):** [`docs/runbooks/observability.md`](docs/runbooks/observability.md)
+- **Security guide and threat model:** [`docs/security/`](docs/security/README.md)
 - **Original academic submission:** tag `v1.0-academic`, files in [`docs/academic-submission/`](docs/academic-submission/NOTE.md)
 
 ```
@@ -35,7 +36,8 @@ client ──▶ :80 nginx ──▶ api:8000 FastAPI ──▶ db:5432 PostgreS
 | 05 Infrastructure as Code | Done (bootstrap live; app stack created, deployed and destroyed) |
 | 06 Kubernetes | Done (kind, Gateway API, zero-downtime rollout verified) |
 | 07 Observability and SRE | Done (JSON logs, request IDs, Prometheus, Grafana, SLO alerts, drill) |
-| 08–10 | Planned |
+| 08 Security engineering | Done (API keys, TLS, rate limits, headers, hardening, threat model) |
+| 09–10 | Planned |
 
 ## API
 
@@ -52,6 +54,11 @@ Base path `/api`. Interactive docs at `/api/docs` (disabled when
 | PUT | `/api/v1/items/{id}` | Replace |
 | PATCH | `/api/v1/items/{id}` | Partial update |
 | DELETE | `/api/v1/items/{id}` | Delete (204) |
+
+**Writes need an API key** (`X-API-Key: <key>` or `Authorization: Bearer <key>`);
+reads are public. Generate one with `scripts/new-api-key.sh`. The server stores only
+the key's hash, and production refuses all writes if no key is configured. See the
+[security guide](docs/security/README.md).
 
 Names are 1–100 characters after trimming and unique regardless of case. Both
 rules are also enforced by the database (`CHECK` constraint and a unique index

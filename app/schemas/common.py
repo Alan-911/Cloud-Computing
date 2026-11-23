@@ -25,6 +25,7 @@ class HealthResponse(BaseModel):
 
 
 _DESCRIPTIONS = {
+    401: "Missing or invalid API key (write operations)",
     404: "Resource not found",
     409: "Conflict with an existing resource",
     422: "Request validation failed",

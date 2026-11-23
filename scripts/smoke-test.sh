@@ -4,6 +4,8 @@
 # Creates one uniquely named item, exercises every endpoint on it, then deletes it.
 #
 #   scripts/smoke-test.sh [base-url]        # default http://localhost
+#   API_KEY=cbe_... scripts/smoke-test.sh   # key for write operations, if the API requires one
+#   CURL_OPTS="--cacert nginx/certs/dev-ca.pem" scripts/smoke-test.sh https://localhost
 #
 # Used by CI (after `docker compose up`), the deploy workflow and ec2-setup.sh.
 
@@ -13,16 +15,24 @@ base="${1:-http://localhost}"
 api="${base%/}/api"
 name="smoke-$(date +%s)-$$"
 failures=0
+read -r -a curl_opts <<< "${CURL_OPTS:-}"
 
-# request METHOD PATH [JSON]  -> sets $status and $body
+# request METHOD PATH [JSON] [--anonymous]  -> sets $status and $body
+# Writes carry $API_KEY unless --anonymous is given.
 request() {
-    local method="$1" path="$2" data="${3:-}"
+    local method="$1" path="$2" data="${3:-}" anon="${4:-}"
     local out
+    local -a auth=()
+    if [ "$method" != GET ] && [ -n "${API_KEY:-}" ] && [ "$anon" != --anonymous ]; then
+        auth=(-H "X-API-Key: ${API_KEY}")
+    fi
     if [ -n "$data" ]; then
-        out="$(curl -sS -m 10 -X "$method" -H 'Content-Type: application/json' -d "$data" \
+        out="$(curl -sS -m 10 "${curl_opts[@]}" "${auth[@]}" -X "$method" \
+            -H 'Content-Type: application/json' -d "$data" \
             -w $'\n%{http_code}' "${api}${path}")"
     else
-        out="$(curl -sS -m 10 -X "$method" -w $'\n%{http_code}' "${api}${path}")"
+        out="$(curl -sS -m 10 "${curl_opts[@]}" "${auth[@]}" -X "$method" \
+            -w $'\n%{http_code}' "${api}${path}")"
     fi
     status="${out##*$'\n'}"
     body="${out%$'\n'*}"
@@ -43,11 +53,15 @@ echo "Smoke test against ${api}"
 
 # Wait up to 60 s for readiness (the stack may still be starting).
 for _ in $(seq 1 30); do
-    curl -sf -m 5 "${api}/health" > /dev/null 2>&1 && break
+    curl -sf -m 5 "${curl_opts[@]}" "${api}/health" > /dev/null 2>&1 && break
     sleep 2
 done
 
 request GET /health/live;                        check "liveness" 200 '"status":"ok"'
+if [ -n "${API_KEY:-}" ]; then
+    request POST /v1/items '{"name":"anonymous-write"}' --anonymous
+    check "write without key 401" 401 '"code":"unauthorized"'
+fi
 request GET /health;                             check "readiness" 200 '"database":"ok"'
 request POST /v1/items "{\"name\":\"${name}\",\"description\":\"smoke\"}"
 check "create" 201 "\"name\":\"${name}\""
