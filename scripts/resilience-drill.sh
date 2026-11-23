@@ -56,8 +56,11 @@ curl -fsS -m 5 -X POST "$URL/api/v1/items" -H 'Content-Type: application/json' \
 sentinel_id=$(sed -n 's/.*"id":\([0-9]*\).*/\1/p' .drill.sentinel)
 
 t_start=$(now)
-"$py" tests/performance/rolling_update_probe.py --url "$URL" --duration 300 --workers 4 \
-    --timeout 3 --stop-file "$stop_file" > "$result_file" &
+# Fixed 100 req/s (the defined workload's rate), open loop. A closed loop would send
+# thousands of requests per second the moment the service starts failing fast,
+# trip the per-client rate limit, and measure that instead of the failure.
+"$py" tests/performance/rolling_update_probe.py --url "$URL" --duration 300 --workers 8 \
+    --rate "${DRILL_RATE:-100}" --timeout 3 --stop-file "$stop_file" > "$result_file" &
 probe=$!
 sleep 15 # baseline
 
@@ -67,7 +70,10 @@ case "$DRILL" in
         before=$(restarts)
         victim=$(kubectl -n "$NS" get pods -l app.kubernetes.io/name=api -o jsonpath='{.items[0].metadata.name}')
         event_at=$(now)
-        kubectl -n "$NS" delete pod "$victim" --grace-period=0 --force --wait=false > /dev/null 2>&1
+        # Crash-like kill: 1 s grace, then SIGKILL; no time to drain. Not --force:
+        # that only deletes the API object while the container keeps serving
+        # until the kubelet catches up, which hides the failure being tested.
+        kubectl -n "$NS" delete pod "$victim" --grace-period=1 --wait=true > /dev/null
         kubectl -n "$NS" rollout status deploy/api --timeout=180s > /dev/null
         kubectl -n "$NS" wait --for=condition=Ready pod -l app.kubernetes.io/name=api --timeout=180s > /dev/null
         ready_at=$(now)
@@ -77,8 +83,11 @@ case "$DRILL" in
     k8s-db-outage)
         before=$(restarts)
         event_at=$(now)
-        kubectl -n "$NS" delete pod postgres-0 --grace-period=0 --force --wait=false > /dev/null 2>&1
-        sleep 3
+        # 1 s grace then SIGKILL, and wait until the old pod is really gone. Never
+        # --force a database pod: the old container would keep running while the
+        # StatefulSet starts a second PostgreSQL on the same volume.
+        kubectl -n "$NS" delete pod postgres-0 --grace-period=1 --wait=true > /dev/null
+        until kubectl -n "$NS" get pod postgres-0 > /dev/null 2>&1; do sleep 0.5; done
         kubectl -n "$NS" wait --for=condition=Ready pod/postgres-0 --timeout=240s > /dev/null
         ready_at=$(now)
         after=$(restarts)

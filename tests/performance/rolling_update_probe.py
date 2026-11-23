@@ -49,10 +49,23 @@ def worker(
     lock: threading.Lock,
     timeout: float,
     api_key: str = "",
+    interval: float = 0.0,
 ):
     api = base.rstrip("/") + "/api"
     i = 0
+    # Open-loop pacing: with interval > 0 each worker sends on a fixed schedule,
+    # independent of how fast responses come back. A closed loop (send again as
+    # soon as the reply arrives) floods the service the moment it starts failing
+    # fast, and then measures the rate limiter instead of the failure.
+    next_at = time.perf_counter()
     while not stop.is_set():
+        if interval > 0:
+            next_at += interval
+            delay = next_at - time.perf_counter()
+            if delay > 0:
+                time.sleep(delay)
+            elif delay < -interval:
+                next_at = time.perf_counter()  # fell behind: resync, never burst
         i += 1
         if i % 4 == 0:
             op, method, url, body = (
@@ -100,6 +113,12 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=5.0)
     parser.add_argument("--stop-file", help="stop early when this file exists")
     parser.add_argument(
+        "--rate",
+        type=float,
+        default=0.0,
+        help="total requests per second, paced (open loop); 0 = as fast as possible",
+    )
+    parser.add_argument(
         "--api-key",
         default=os.environ.get("API_KEY", ""),
         help="key for write requests (default: $API_KEY)",
@@ -122,7 +141,15 @@ def main() -> int:
     threads = [
         threading.Thread(
             target=worker,
-            args=(args.url, stop, stats, lock, args.timeout, args.api_key),
+            args=(
+                args.url,
+                stop,
+                stats,
+                lock,
+                args.timeout,
+                args.api_key,
+                args.workers / args.rate if args.rate > 0 else 0.0,
+            ),
             daemon=True,
         )
         for _ in range(args.workers)
@@ -143,6 +170,7 @@ def main() -> int:
     pct = lambda p: round(lat[min(len(lat) - 1, int(p * len(lat)))], 1)  # noqa: E731
     summary = {
         "url": args.url,
+        "target_rate": args.rate or None,
         "seconds": round(time.time() - stats["start"], 1),
         "requests": stats["total"],
         "failed": stats["failed"],
