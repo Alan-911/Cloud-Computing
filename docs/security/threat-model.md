@@ -66,6 +66,22 @@ Scanner state on `develop` (Phase 08):
 - **Re-evaluate:** at each release, or sooner if any becomes fixable or is rated critical.
 - **Option considered:** a distroless or minimal Python base. Deferred, because no maintained distroless image exists for Python 3.15 yet.
 
+**Accepted: CodeQL `py/weak-sensitive-data-hashing` (High) on `hash_key`.**
+- **The rule's assumption:** CodeQL assumes the input is a password and expects a slow KDF.
+- **Why that doesn't apply:**
+  - API keys are 256-bit values from a CSPRNG, so a leaked SHA-256 hash can't be inverted by brute force.
+  - A slow KDF would only add per-request CPU cost, which is a denial-of-service lever.
+- **Precedent:** the same choice as GitHub and Stripe token storage.
+- **Records:** the rationale is in the function's docstring. Dismiss the alert as "won't fix" with this reference.
+- **Re-evaluate if:** keys ever become user-chosen, in which case switch to Argon2id.
+
+**Fixed after the first CodeQL scan:**
+- 9× `actions/unpinned-tag`: every action, first-party included, is now pinned to a commit SHA, and Dependabot keeps the pins current.
+- `py/side-effect-in-assert` in a test.
+- An empty `except` in the probe.
+- The coursework folder is excluded from analysis (`.github/codeql/codeql-config.yml`).
+- Remaining notes are Alembic's required module-level `revision` variables.
+
 ## Open items
 
 | Item | Owner | Plan |

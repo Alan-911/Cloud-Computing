@@ -39,7 +39,10 @@ def test_crud_round_trip(client: TestClient) -> None:
     assert r.status_code == 200
     assert r.json()["name"] == "beta" and r.json()["description"] is None
 
-    assert client.delete(f"{ITEMS}/{item['id']}").status_code == 204
+    # Perform the request outside the assert: under `python -O`, asserts (and any
+    # side effects inside them) are stripped.
+    deleted = client.delete(f"{ITEMS}/{item['id']}")
+    assert deleted.status_code == 204
     assert client.get(f"{ITEMS}/{item['id']}").status_code == 404
 
 

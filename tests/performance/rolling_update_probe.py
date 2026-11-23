@@ -125,12 +125,8 @@ def main() -> int:
 
     deadline = time.time() + args.duration
     while time.time() < deadline:
-        if args.stop_file:
-            try:
-                open(args.stop_file).close()
-                break
-            except OSError:
-                pass
+        if args.stop_file and os.path.exists(args.stop_file):
+            break
         time.sleep(0.5)
     stop.set()
     for t in threads:

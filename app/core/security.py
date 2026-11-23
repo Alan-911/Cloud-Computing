@@ -42,6 +42,16 @@ _api_key_header = APIKeyHeader(
 
 
 def hash_key(key: str) -> str:
+    """SHA-256 of an API key, the form stored in APP_API_KEY_HASHES.
+
+    A fast hash is deliberate. Slow password hashes (bcrypt, scrypt, Argon2) exist
+    because passwords are low-entropy and can be guessed offline. These keys are
+    256 random bits from a CSPRNG (scripts/new-api-key.sh), so even a leaked hash
+    cannot be brute-forced, as with GitHub's and Stripe's token storage. A slow hash
+    would also add tens of milliseconds of CPU to every write, which is a denial-of-
+    service lever. Recorded in docs/security/threat-model.md (CodeQL
+    py/weak-sensitive-data-hashing: reviewed, accepted).
+    """
     return hashlib.sha256(key.encode()).hexdigest()
 
 
