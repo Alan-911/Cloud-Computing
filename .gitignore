@@ -46,3 +46,6 @@ nginx/certs/
 
 # Manual EC2 setup write key
 .api-key
+
+# Resilience drill scratch files
+.drill.*

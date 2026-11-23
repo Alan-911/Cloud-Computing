@@ -1,7 +1,18 @@
-# Flood protection at the Gateway: Envoy's local rate limiter on the API route.
-# Requests beyond the budget get 429 before they reach the API pods. The budget
-# is per Envoy replica and sits well above normal traffic (including the CI
-# zero-downtime test); nginx applies per-client limits in the Compose setup.
+# Traffic policy for the API route at the Gateway (Envoy).
+#
+# Rate limit: flood protection. Requests beyond the budget get 429 before they
+#   reach the pods. Per Envoy replica, well above normal traffic (including the CI
+#   zero-downtime test); nginx applies per-client limits in the Compose setup.
+#
+# Retries: only when the request provably never reached the application
+#   (connect-failure, refused-stream), so retrying is safe for every method,
+#   including POST. This hides the moment between a pod dying and its endpoint
+#   being removed. Application errors (5xx) are never retried: that could repeat
+#   a write.
+#
+# Passive health check (outlier detection): a pod that returns gateway errors
+#   repeatedly is ejected for a while, so traffic stops going to a broken pod even
+#   before its readiness probe fails.
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: BackendTrafficPolicy
 metadata:
@@ -18,3 +29,17 @@ spec:
         - limit:
             requests: 2000
             unit: Second
+  retry:
+    numRetries: 2
+    retryOn:
+      triggers: ["connect-failure", "refused-stream"]
+    perRetry:
+      backOff:
+        baseInterval: 50ms
+        maxInterval: 500ms
+  healthCheck:
+    passive:
+      consecutiveGatewayErrors: 3
+      interval: 2s
+      baseEjectionTime: 10s
+      maxEjectionPercent: 50

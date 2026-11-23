@@ -81,6 +81,11 @@ def worker(
             stats["latencies"].append(elapsed_ms)
             if not ok:
                 stats["failed"] += 1
+                t_fail = round(time.time() - stats["start"], 2)
+                stats["first_fail_t"] = (
+                    stats["first_fail_t"] if stats["first_fail_t"] is not None else t_fail
+                )
+                stats["last_fail_t"] = t_fail
                 if len(stats["failures"]) < 20:
                     stats["failures"].append(
                         {"t": round(time.time() - stats["start"], 2), "op": op, "outcome": outcome}
@@ -109,6 +114,8 @@ def main() -> int:
         "outcomes": collections.Counter(),
         "latencies": [],
         "failures": [],
+        "first_fail_t": None,
+        "last_fail_t": None,
     }
     lock = threading.Lock()
     stop = threading.Event()
@@ -149,6 +156,15 @@ def main() -> int:
             "max": round(lat[-1], 1),
         },
         "first_failures": stats["failures"],
+        # Seconds from the first to the last failed request (0 if none failed):
+        # the observed outage window during a drill.
+        "failure_window_s": (
+            round(stats["last_fail_t"] - stats["first_fail_t"], 2)
+            if stats["first_fail_t"] is not None
+            else 0
+        ),
+        "first_failure_at_s": stats["first_fail_t"],
+        "last_failure_at_s": stats["last_fail_t"],
     }
     print(json.dumps(summary, indent=2))
     return 1 if stats["failed"] else 0

@@ -3,6 +3,7 @@
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
+from sqlalchemy import exc as sa_exc
 
 from app.core.errors import ConflictError, NotFoundError, error_body, register_error_handlers
 
@@ -74,3 +75,24 @@ def test_unhandled_exception_hides_internals(
     assert r.json() == error_body("internal_error", "An unexpected error occurred.")
     assert "secret" not in r.text
     assert "Unhandled error" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        sa_exc.OperationalError("SELECT 1", {}, Exception("connection refused")),
+        sa_exc.TimeoutError("QueuePool limit reached"),
+    ],
+)
+def test_database_unavailable_is_503_not_500(error: Exception) -> None:
+    app = FastAPI()
+    register_error_handlers(app)
+
+    @app.get("/db")
+    def db() -> None:
+        raise error
+
+    r = TestClient(app, raise_server_exceptions=False).get("/db")
+    assert r.status_code == 503
+    assert r.json()["error"]["code"] == "database_unavailable"
+    assert r.headers["retry-after"] == "2"
