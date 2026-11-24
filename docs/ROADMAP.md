@@ -381,6 +381,10 @@ acceptance criteria, test evidence, documentation updates.
   - `scripts/setup-env.sh` for one-command local setup
 - [x] `CBE-P10-004` `CHANGELOG.md`, MIT `LICENSE`, version 2.0.0
 - [ ] `CBE-P10-005` Release `v2.0.0`: pull request to `main`, tag, GitHub release
+  - PR #7 merged to `main` as `6699309` with every check passing; tag `v2.0.0` pushed.
+  - The Release workflow published `ghcr.io/alan-911/cloud-computing` `2.0.0`, `2.0` and `latest` (one digest, `sha256:333a60f2…`).
+  - The pulled `2.0.0` image reports `version: 2.0.0` on `/api/health` and in `app_info`; `gh attestation verify` passes.
+  - Remaining: the public GitHub Release.
 
 **Acceptance:** a reviewer can clone, run and understand the system in 15 minutes.
 
