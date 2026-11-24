@@ -154,6 +154,13 @@ acceptance criteria, test evidence, documentation updates.
 - **Trust fix:** both trust policies now use the immutable subject (an in-place change to one resource).
 - **Keyless CI plan:** Infrastructure run 44977505706 assumed the read-only role through OIDC and planned the app stack: 18 to add, 0 to change, 0 to destroy.
 
+**Evidence (v2.0.0 live demo, 2026-11-24, as `yves-admin`):**
+- **Created:** `terraform plan` showed 19 to add (with the budget, alerts to the account email), 0 to change, 0 to destroy; `apply` added 19. Host `i-089704e242de8a15e`, t4g.small (arm64), at 44.195.163.234.
+- **First boot:** `/api/health` returned `{"version":"2.0.0","database":"ok"}` about 90 s after apply.
+- **Pipeline deploy:** the Deploy workflow, run from tag `v2.0.0`, deployed `sha-6699309` through SSM with OIDC and passed its public health check (run 45323341079).
+- **External checks:** health 200, list 200, write without a key 401, `/api/docs` 404 and `/metrics` 404 from the internet. Security headers and `X-Request-ID` present.
+- **Cost:** about $18.31/month while running; `terraform destroy` stops it.
+
 **Evidence (app stack create → deploy → destroy, 2026-11-22):**
 - **Created:** `terraform apply` added 18 resources at 02:51:32Z. Host `i-0549fd1b713b43ad7` was a t4g.small (arm64) at 100.50.238.252.
 - **First boot:** healthy about 70 s later. `/api/health` returned `{"version":"1.4.0","database":"ok"}`.
