@@ -384,6 +384,22 @@ acceptance criteria, test evidence, documentation updates.
 
 **Acceptance:** a reviewer can clone, run and understand the system in 15 minutes.
 
+**Evidence (2026-11-24):**
+- A fresh clone of `761bcc3` was run following the README word for word.
+- Timeline:
+
+  | Step | Elapsed |
+  |---|---|
+  | `git clone` | 3 s |
+  | `scripts/setup-env.sh` | 4 s |
+  | `docker compose up -d --build --wait` | 54 s |
+  | `scripts/smoke-test.sh`, 11/11 | 55 s |
+
+- The README's "try it" commands worked: health 200 (v2.0.0), create with key 201, without key 401, `/api/docs` 200.
+- **55 s from clone to a verified system.** Base images were cached locally; a cold machine adds about 2–5 min of image pulls, still within 15 min.
+- The test ran under its own Compose project (`qs-review`) so it couldn't touch the existing stack's volume.
+- All 7 Mermaid diagrams (6 architecture, 1 README) render with mermaid-cli 11.4.2.
+
 ## Success metrics (targets)
 
 | Metric | Target |
