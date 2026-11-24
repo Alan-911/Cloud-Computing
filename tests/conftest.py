@@ -24,10 +24,14 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import Settings
+from app.core.security import hash_key
 from app.main import create_app
 from app.models.item import Item
 
 ROOT = Path(__file__).resolve().parents[1]
+
+# A fixed key for tests only; the app is configured with its hash.
+TEST_API_KEY = "cbe_test_key_for_pytest_only"
 
 
 def alembic_config(database_url: str) -> Config:
@@ -100,10 +104,16 @@ def item_factory(db_session: Session) -> Callable[..., Item]:
 
 @pytest.fixture
 def settings(database_url: str) -> Settings:
-    return Settings(environment="test", database_url=database_url, _env_file=None)
+    return Settings(
+        environment="test",
+        database_url=database_url,
+        api_key_hashes=hash_key(TEST_API_KEY),
+        _env_file=None,
+    )
 
 
 @pytest.fixture
 def client(settings: Settings, clean_db: None) -> Iterator[TestClient]:
-    with TestClient(create_app(settings)) as c:
+    # Sends a valid key by default; auth tests override or drop the header.
+    with TestClient(create_app(settings), headers={"X-API-Key": TEST_API_KEY}) as c:
         yield c

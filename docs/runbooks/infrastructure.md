@@ -61,6 +61,17 @@ terraform output -raw app_backend_config > ../app/backend.hcl
 The bootstrap stack keeps local state (`bootstrap/terraform.tfstate`, git-ignored).
 Back it up; it holds no secrets.
 
+**GitHub OIDC subject.** This repository uses GitHub's *immutable subject claims*,
+so tokens identify it as `repo:Alan-911@136555079/Cloud-Computing@1400158294:...`
+(owner and repo IDs), not `repo:Alan-911/Cloud-Computing:...`. The trust policies
+use that prefix through the variable `github_oidc_subject_prefix`. A renamed or
+re-created repository with the same name can't assume the roles. If you fork or
+move the project, read the new prefix and set the variable:
+
+```bash
+gh api repos/OWNER/REPO/actions/oidc/customization/sub
+```
+
 Repository variables (Settings → Secrets and variables → Actions → Variables) turn on
 the `terraform plan` job in the Infrastructure workflow:
 

@@ -10,6 +10,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy import exc as sa_exc
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 logger = logging.getLogger(__name__)
@@ -18,11 +19,18 @@ logger = logging.getLogger(__name__)
 class AppError(Exception):
     status_code = status.HTTP_400_BAD_REQUEST
     code = "bad_request"
+    headers: dict[str, str] | None = None
 
     def __init__(self, message: str, details: Any = None) -> None:
         super().__init__(message)
         self.message = message
         self.details = details
+
+
+class UnauthorizedError(AppError):
+    status_code = status.HTTP_401_UNAUTHORIZED
+    code = "unauthorized"
+    headers = {"WWW-Authenticate": 'ApiKey header="X-API-Key"'}
 
 
 class NotFoundError(AppError):
@@ -55,7 +63,9 @@ def register_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def handle_app_error(_: Request, exc: AppError) -> JSONResponse:
         return JSONResponse(
-            error_body(exc.code, exc.message, exc.details), status_code=exc.status_code
+            error_body(exc.code, exc.message, exc.details),
+            status_code=exc.status_code,
+            headers=exc.headers,
         )
 
     @app.exception_handler(RequestValidationError)
@@ -80,6 +90,19 @@ def register_error_handlers(app: FastAPI) -> None:
             error_body(code, str(exc.detail)),
             status_code=exc.status_code,
             headers=getattr(exc, "headers", None),
+        )
+
+    # The database is unreachable, restarting, or overloaded (connection refused or
+    # dropped, statement timeout, pool exhausted). That is a temporary condition, not
+    # a bug: tell the client to retry instead of reporting an internal error.
+    @app.exception_handler(sa_exc.OperationalError)
+    @app.exception_handler(sa_exc.TimeoutError)
+    async def handle_database_unavailable(_: Request, exc: Exception) -> JSONResponse:
+        logger.warning("database unavailable: %s", type(exc).__name__)
+        return JSONResponse(
+            error_body("database_unavailable", "The database is temporarily unavailable."),
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            headers={"Retry-After": "2"},
         )
 
     @app.exception_handler(Exception)

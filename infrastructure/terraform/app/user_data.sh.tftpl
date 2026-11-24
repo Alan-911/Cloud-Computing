@@ -65,6 +65,16 @@ if [ ! -f "$DATA/secrets/app.env" ]; then
   sed -i "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$(openssl rand -hex 24)/" "$DATA/secrets/app.env"
   sed -i "s/^APP_ENVIRONMENT=.*/APP_ENVIRONMENT=production/" "$DATA/secrets/app.env"
 fi
+# API write key: the hash goes into app.env (the API only knows hashes); the key
+# itself stays in a root-only file for the on-host smoke test. Rotate with
+# scripts/new-api-key.sh.
+if ! grep -q '^APP_API_KEY_HASHES=.' "$DATA/secrets/app.env"; then
+  umask 077
+  key="cbe_$(openssl rand -base64 32 | tr '+/' '-_' | tr -d '=\r\n')"
+  printf '%s\n' "$key" > "$DATA/secrets/api.key"
+  sed -i '/^APP_API_KEY_HASHES=/d; /^API_KEY=/d' "$DATA/secrets/app.env"
+  echo "APP_API_KEY_HASHES=$(printf '%s' "$key" | sha256sum | cut -d' ' -f1)" >> "$DATA/secrets/app.env"
+fi
 ln -sfn "$DATA/secrets/app.env" "$APP_DIR/.env"
 
 IMAGE_TAG="${image_tag}" bash "$APP_DIR/scripts/deploy-on-host.sh"

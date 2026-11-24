@@ -1,0 +1,29 @@
+# Local cluster: one control plane and two workers, so the API replicas spread
+# across nodes and a rolling update moves pods between them.
+#
+#   kind create cluster --config kubernetes/cluster/kind.yaml
+#
+# The Envoy Gateway proxy is exposed as NodePort 30080 on the control-plane node and
+# mapped to http://localhost:8088 (8088, not 80, so it coexists with Docker Compose).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: items
+nodes:
+  - role: control-plane
+    # etcd data on tmpfs (/tmp in kind nodes). On Docker Desktop the VM's disk can
+    # stall fsync for over a second; etcd then misses deadlines and the scheduler and
+    # controller-manager lose leader election and crash-loop. This cluster is
+    # disposable, so keeping its state in memory costs nothing.
+    kubeadmConfigPatches:
+      - |
+        kind: ClusterConfiguration
+        etcd:
+          local:
+            dataDir: /tmp/etcd
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 8088
+        listenAddress: "127.0.0.1"
+        protocol: TCP
+  - role: worker
+  - role: worker

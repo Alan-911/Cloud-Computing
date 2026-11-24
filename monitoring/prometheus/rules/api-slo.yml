@@ -1,0 +1,129 @@
+# Service level objectives for the items API
+#
+#   Availability: 99.5% of requests succeed (non-5xx).   Error budget 0.5%.
+#   Latency:      95% of requests complete within 200 ms.
+#
+# Recording rules precompute the SLIs over several windows. Alerts follow the
+# multi-window burn-rate pattern (Google SRE workbook): page when the budget burns
+# fast in BOTH a long and a short window, so a brief spike does not page and a
+# fixed problem stops alerting quickly. 14.4x burn exhausts a 30-day budget in
+# ~2 days; 6x in ~5 days.
+
+groups:
+  - name: api-sli
+    interval: 15s
+    rules:
+      - record: job:http_requests:rate5m
+        expr: sum by (job) (rate(http_requests_total{job="api"}[5m]))
+
+      - record: job_route:http_requests:rate5m
+        expr: sum by (job, route) (rate(http_requests_total{job="api"}[5m]))
+
+      # Error ratio = 5xx / all, over each burn-rate window. The `or ... * 0` makes the
+      # numerator 0 (not missing) when there have been no 5xx at all, so a healthy
+      # service reports 0% errors instead of no data.
+      - record: job:http_error_ratio:rate5m
+        expr: |
+          (
+            sum by (job) (rate(http_requests_total{job="api", status=~"5.."}[5m]))
+            or sum by (job) (rate(http_requests_total{job="api"}[5m])) * 0
+          )
+          / sum by (job) (rate(http_requests_total{job="api"}[5m]))
+      - record: job:http_error_ratio:rate30m
+        expr: |
+          (
+            sum by (job) (rate(http_requests_total{job="api", status=~"5.."}[30m]))
+            or sum by (job) (rate(http_requests_total{job="api"}[30m])) * 0
+          )
+          / sum by (job) (rate(http_requests_total{job="api"}[30m]))
+      - record: job:http_error_ratio:rate1h
+        expr: |
+          (
+            sum by (job) (rate(http_requests_total{job="api", status=~"5.."}[1h]))
+            or sum by (job) (rate(http_requests_total{job="api"}[1h])) * 0
+          )
+          / sum by (job) (rate(http_requests_total{job="api"}[1h]))
+      - record: job:http_error_ratio:rate6h
+        expr: |
+          (
+            sum by (job) (rate(http_requests_total{job="api", status=~"5.."}[6h]))
+            or sum by (job) (rate(http_requests_total{job="api"}[6h])) * 0
+          )
+          / sum by (job) (rate(http_requests_total{job="api"}[6h]))
+
+      # Latency SLI: share of requests slower than 200 ms (the 0.2 bucket).
+      - record: job:http_slow_ratio:rate5m
+        expr: |
+          1 - (
+            sum by (job) (rate(http_request_duration_seconds_bucket{job="api", le="0.2"}[5m]))
+            / sum by (job) (rate(http_request_duration_seconds_count{job="api"}[5m]))
+          )
+      - record: job:http_slow_ratio:rate1h
+        expr: |
+          1 - (
+            sum by (job) (rate(http_request_duration_seconds_bucket{job="api", le="0.2"}[1h]))
+            / sum by (job) (rate(http_request_duration_seconds_count{job="api"}[1h]))
+          )
+
+      - record: job:http_request_duration_seconds:p95_5m
+        expr: histogram_quantile(0.95, sum by (job, le) (rate(http_request_duration_seconds_bucket{job="api"}[5m])))
+      - record: job:http_request_duration_seconds:p99_5m
+        expr: histogram_quantile(0.99, sum by (job, le) (rate(http_request_duration_seconds_bucket{job="api"}[5m])))
+
+  - name: api-alerts
+    rules:
+      - alert: ApiDown
+        expr: up{job="api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API target {{ $labels.instance }} is down"
+          description: "Prometheus could not scrape the API for more than 1 minute."
+          runbook: docs/runbooks/observability.md#apidown
+
+      - alert: ApiErrorBudgetBurnFast
+        expr: |
+          job:http_error_ratio:rate1h{job="api"} > (14.4 * 0.005)
+          and job:http_error_ratio:rate5m{job="api"} > (14.4 * 0.005)
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "API is burning its availability error budget 14x too fast"
+          description: "5xx ratio {{ $value | humanizePercentage }} over 5m and 1h (SLO 99.5%)."
+          runbook: docs/runbooks/observability.md#apierrorbudgetburnfast
+
+      - alert: ApiErrorBudgetBurnSlow
+        expr: |
+          job:http_error_ratio:rate6h{job="api"} > (6 * 0.005)
+          and job:http_error_ratio:rate30m{job="api"} > (6 * 0.005)
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API is burning its availability error budget 6x too fast"
+          description: "5xx ratio {{ $value | humanizePercentage }} over 30m and 6h (SLO 99.5%)."
+          runbook: docs/runbooks/observability.md#apierrorbudgetburnslow
+
+      - alert: ApiLatencySLOBreach
+        expr: |
+          job:http_slow_ratio:rate1h{job="api"} > 0.05
+          and job:http_slow_ratio:rate5m{job="api"} > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 5% of API requests take longer than 200 ms"
+          description: "{{ $value | humanizePercentage }} of requests over 200 ms (SLO: at most 5%)."
+          runbook: docs/runbooks/observability.md#apilatencyslobreach
+
+      - alert: ApiDbPoolSaturated
+        expr: max by (job, instance) (db_pool_connections_in_use{job="api"}) >= 9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "API database pool nearly exhausted on {{ $labels.instance }}"
+          description: "{{ $value }} of 10 connections (pool 5 + overflow 5) in use for 5 minutes."
+          runbook: docs/runbooks/observability.md#apidbpoolsaturated

@@ -1,0 +1,15 @@
+# HTTPS overlay: nginx terminates TLS on 443 and redirects 80 to HTTPS.
+#
+#   scripts/dev-cert.sh            # once: local CA + certificate for localhost
+#   docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d --wait
+#   curl --cacert nginx/certs/dev-ca.pem https://localhost/api/health
+#
+# Combine with docker-compose.observability.yml as needed.
+
+services:
+  nginx:
+    ports:
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d-tls:/etc/nginx/conf.d:ro
+      - ./nginx/certs:/etc/nginx/certs:ro

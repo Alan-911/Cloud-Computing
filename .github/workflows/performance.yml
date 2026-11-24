@@ -1,0 +1,143 @@
+name: Performance
+
+# Load, capacity and failure-injection tests on clean GitHub runners (ubuntu-24.04,
+# 4 vCPU / 16 GB), so results are reproducible and not skewed by a laptop VM.
+#
+#   load        the defined workload (k6, 100 req/s for 3 min through nginx);
+#               fails the job if p95 >= 200 ms, p99 >= 500 ms or > 0.5% errors
+#   stress      capacity ramp (50 -> 800 req/s) against the API directly; measures
+#   drills      database restart (Compose), API pod crash and database outage
+#               (kind), each with a pass criterion (see scripts/resilience-drill.sh)
+#
+# Results: job summaries and the "performance-results" artifacts (k6 JSON).
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "41 5 * * 0" # Sundays 05:41 UTC
+  push:
+    branches: [develop]
+    paths:
+      - "tests/performance/**"
+      - "scripts/resilience-drill.sh"
+      - ".github/workflows/performance.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  K6_IMAGE: grafana/k6:2.4.0
+  COMPOSE_PROJECT_NAME: items
+
+jobs:
+  compose:
+    name: Load, capacity and DB restart (Compose)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.15"
+      - name: Environment
+        run: |
+          {
+            echo "### Environment"
+            echo "- Runner: $(nproc) vCPU, $(free -g | awk '/Mem:/{print $2}') GB RAM, $(lsb_release -ds)"
+            echo "- Commit: \`${GITHUB_SHA::7}\`, k6 \`${K6_IMAGE##*:}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Start the stack (production mode, API key)
+        run: |
+          keys="$(bash scripts/new-api-key.sh)"
+          key="$(printf '%s\n' "$keys" | sed -n 's/^API_KEY=//p')"
+          echo "::add-mask::$key"
+          echo "API_KEY=$key" >> "$GITHUB_ENV"
+          {
+            printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 16)"
+            printf '%s\n' "$keys" | grep '^APP_API_KEY_HASHES='
+            echo "APP_LOG_LEVEL=WARNING"
+          } > .env
+          docker compose up -d --build --wait --wait-timeout 180
+          mkdir -p results
+
+      - name: Defined workload (gate) - 100 req/s for 3 min through nginx
+        run: |
+          docker run --rm --network host -u "$(id -u)" -v "$PWD/tests/performance/k6:/k6" -v "$PWD/results:/results" \
+            -e BASE_URL=http://localhost -e API_KEY -e SUMMARY=/results/load.json \
+            "$K6_IMAGE" run --quiet /k6/load.js | tee results/load.txt
+      - name: Capacity ramp (measure) - API directly
+        if: always()
+        run: |
+          docker run --rm --network items_default -u "$(id -u)" -v "$PWD/tests/performance/k6:/k6" -v "$PWD/results:/results" \
+            -e BASE_URL=http://api:8000 -e API_KEY -e SUMMARY=/results/stress.json \
+            "$K6_IMAGE" run --quiet /k6/stress.js | tee results/stress.txt
+      - name: Drill - database restart under load
+        if: always()
+        run: bash scripts/resilience-drill.sh compose-db-restart | tee results/drill-compose-db-restart.json
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo '### Defined workload (100 req/s, 3 min, through nginx)'
+            echo '```'; sed -n '/Defined workload/,$p' results/load.txt 2>/dev/null; echo '```'
+            echo '### Capacity'
+            echo '```'; sed -n '/Capacity/,$p' results/stress.txt 2>/dev/null; echo '```'
+            echo '### Drill: database restart'
+            echo '```json'; cat results/drill-compose-db-restart.json 2>/dev/null; echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: performance-results-compose
+          path: results/
+          retention-days: 30
+      - name: Compose logs
+        if: failure()
+        run: docker compose logs --no-color --tail 100
+
+  kubernetes:
+    name: Failure drills (kind)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.15"
+      - uses: helm/kind-action@ea822c7bf1874f08e5a491df991c228edffc3376 # v1.15.2
+        with:
+          version: v0.33.0
+          install_only: true
+      - name: Build the image and create the cluster
+        run: |
+          docker build -f app/Dockerfile -t ghcr.io/alan-911/cloud-computing:perf .
+          kind create cluster --config kubernetes/cluster/kind.yaml --wait 120s
+          kind load docker-image --name items ghcr.io/alan-911/cloud-computing:perf
+          bash scripts/k8s-up.sh perf
+          mkdir -p results
+      - name: Drill - API pod crash under load
+        run: bash scripts/resilience-drill.sh k8s-pod-kill | tee results/drill-k8s-pod-kill.json
+      - name: Drill - database outage under load
+        if: always()
+        run: bash scripts/resilience-drill.sh k8s-db-outage | tee results/drill-k8s-db-outage.json
+      - name: Summary
+        if: always()
+        run: |
+          for d in k8s-pod-kill k8s-db-outage; do
+            echo "### Drill: $d"; echo '```json'; cat "results/drill-$d.json" 2>/dev/null; echo '```'
+          done >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: performance-results-kubernetes
+          path: results/
+          retention-days: 30
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide
+          kubectl -n items get events --sort-by=.lastTimestamp | tail -40

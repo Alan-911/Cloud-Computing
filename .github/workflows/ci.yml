@@ -24,8 +24,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -35,6 +35,38 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: ruff check --output-format=github .
       - run: ruff format --check .
+
+  monitoring:
+    name: Monitoring config (promtool)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      PROMETHEUS_IMAGE: prom/prometheus:v3.16.0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Prometheus config and rules are valid
+        run: |
+          docker run --rm --entrypoint promtool -v "$PWD/monitoring/prometheus:/p" "$PROMETHEUS_IMAGE" \
+            check config /p/prometheus.yml
+      - name: Alert and SLO rule unit tests
+        run: |
+          docker run --rm --entrypoint promtool -v "$PWD/monitoring/prometheus:/p" -w /p/tests \
+            "$PROMETHEUS_IMAGE" test rules api-slo-test.yml
+      - name: Grafana dashboard is valid JSON with every panel on the Prometheus datasource
+        run: |
+          python3 - <<'PY'
+          import json
+          d = json.load(open("monitoring/grafana/dashboards/items-api.json"))
+          panels = [p for p in d["panels"] if p["type"] != "row"]
+          assert panels, "no panels"
+          bad = [p["title"] for p in panels if p.get("datasource", {}).get("uid") != "prometheus"]
+          assert not bad, f"panels without the Prometheus datasource: {bad}"
+          print(f"{len(panels)} panels OK")
+          PY
+      - name: Compose overlay resolves
+        run: |
+          printf 'POSTGRES_PASSWORD=x\nGRAFANA_ADMIN_PASSWORD=x\n' > .env
+          docker compose -f docker-compose.yml -f docker-compose.observability.yml config --quiet
 
   test:
     name: Tests (${{ matrix.database }})
@@ -57,8 +89,8 @@ jobs:
     env:
       TEST_DATABASE_URL: ${{ matrix.database == 'postgres' && 'postgresql+psycopg://postgres:ci-only-throwaway@localhost:5432/test' || '' }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -75,7 +107,7 @@ jobs:
             pct=$(python -c "import xml.etree.ElementTree as E; print(round(float(E.parse('coverage.xml').getroot().get('line-rate'))*100, 2))")
             echo "### Tests (${{ matrix.database }}): line coverage ${pct}%" >> "$GITHUB_STEP_SUMMARY"
           fi
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: test-results-${{ matrix.database }}
@@ -89,10 +121,10 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/setup-buildx-action@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: Build image
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: app/Dockerfile
@@ -105,11 +137,32 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Start the stack (db -> migrate -> api -> nginx)
         run: |
-          printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 16)" > .env
+          # Production mode rejects writes without a configured key (fail closed),
+          # so generate one: the hash goes to the API, the key to the smoke test.
+          keys="$(bash scripts/new-api-key.sh)"
+          key="$(printf '%s\n' "$keys" | sed -n 's/^API_KEY=//p')"
+          echo "::add-mask::$key"
+          printf '%s\n' "$key" > .ci-api-key
+          {
+            printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 16)"
+            printf '%s\n' "$keys" | grep '^APP_API_KEY_HASHES='
+          } > .env
           docker compose up -d --no-build --wait --wait-timeout 120
           docker compose ps -a
-      - name: Smoke test through nginx
-        run: bash scripts/smoke-test.sh http://localhost
+      - name: Smoke test through nginx (with and without the API key)
+        run: API_KEY="$(cat .ci-api-key)" bash scripts/smoke-test.sh http://localhost
+      - name: Security headers and hardening are in place
+        run: |
+          headers="$(curl -s -D - -o /dev/null http://localhost/api/health)"
+          for h in x-content-type-options x-frame-options content-security-policy referrer-policy; do
+            grep -qi "^$h:" <<< "$headers" || { echo "::error::missing header $h"; exit 1; }
+          done
+          if grep -qiE '^server: .*[0-9]' <<< "$headers"; then
+            echo "::error::server version disclosed"; exit 1
+          fi
+          test "$(docker inspect items_api --format '{{.HostConfig.ReadonlyRootfs}}')" = true
+          docker inspect items_api --format '{{.HostConfig.CapDrop}}' | grep -q ALL
+          echo "Headers present; API container is read-only with all capabilities dropped."
       - name: API and database are not published to the host
         run: |
           if curl -s -m 3 http://localhost:8000/api/health; then
@@ -121,7 +174,8 @@ jobs:
           echo "Only nginx is published."
       - name: Data survives a full restart
         run: |
-          curl -sf -X POST http://localhost/api/v1/items -H 'Content-Type: application/json' -d '{"name":"persist-check"}'
+          curl -sf -X POST http://localhost/api/v1/items -H 'Content-Type: application/json' \
+            -H "X-API-Key: $(cat .ci-api-key)" -d '{"name":"persist-check"}'
           docker compose down
           docker compose up -d --no-build --wait --wait-timeout 120
           curl -sf http://localhost/api/v1/items | grep -q '"name":"persist-check"'

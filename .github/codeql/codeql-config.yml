@@ -1,0 +1,6 @@
+# CodeQL configuration (referenced from .github/workflows/security.yml).
+name: items-api
+paths-ignore:
+  # Graded coursework kept for the record (see docs/academic-submission/NOTE.md);
+  # not part of the service and never deployed. Ruff excludes it as well.
+  - docs/academic-submission

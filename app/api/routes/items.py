@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Path, Query, Request, Response, status
 
 from app.api.deps import ItemServiceDep, SettingsDep
+from app.core.security import WriteAccess
 from app.schemas.common import error_responses
 from app.schemas.item import ItemCreate, ItemPage, ItemPatch, ItemRead
 
@@ -41,7 +42,8 @@ def list_items(
     response_model=ItemRead,
     status_code=status.HTTP_201_CREATED,
     summary="Create an item",
-    responses=error_responses(409, 422),
+    responses=error_responses(401, 409, 422),
+    dependencies=[WriteAccess],
 )
 def create_item(
     body: ItemCreate, service: ItemServiceDep, request: Request, response: Response
@@ -65,8 +67,9 @@ def get_item(item_id: ItemId, service: ItemServiceDep) -> ItemRead:
     "/{item_id}",
     response_model=ItemRead,
     summary="Replace an item",
+    dependencies=[WriteAccess],
     description="Replaces every field. Omitted optional fields are cleared.",
-    responses=error_responses(404, 409, 422),
+    responses=error_responses(401, 404, 409, 422),
 )
 def replace_item(item_id: ItemId, body: ItemCreate, service: ItemServiceDep) -> ItemRead:
     return ItemRead.model_validate(service.replace(item_id, body))
@@ -76,8 +79,9 @@ def replace_item(item_id: ItemId, body: ItemCreate, service: ItemServiceDep) -> 
     "/{item_id}",
     response_model=ItemRead,
     summary="Update an item",
+    dependencies=[WriteAccess],
     description="Changes only the fields present in the body.",
-    responses=error_responses(404, 409, 422),
+    responses=error_responses(401, 404, 409, 422),
 )
 def update_item(item_id: ItemId, body: ItemPatch, service: ItemServiceDep) -> ItemRead:
     return ItemRead.model_validate(service.update(item_id, body))
@@ -87,7 +91,8 @@ def update_item(item_id: ItemId, body: ItemPatch, service: ItemServiceDep) -> It
     "/{item_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete an item",
-    responses=error_responses(404, 422),
+    dependencies=[WriteAccess],
+    responses=error_responses(401, 404, 422),
 )
 def delete_item(item_id: ItemId, service: ItemServiceDep) -> Response:
     service.delete(item_id)

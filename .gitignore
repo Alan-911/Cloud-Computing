@@ -35,3 +35,17 @@ tfplan
 terraform.tfvars
 backend.hcl
 crash.log
+
+# Kubernetes rolling-update probe scratch files
+.k8s-probe.*
+.k8s-api-key
+
+# Local TLS certificates and keys (scripts/dev-cert.sh)
+nginx/certs/
+.ci-api-key
+
+# Manual EC2 setup write key
+.api-key
+
+# Resilience drill scratch files
+.drill.*

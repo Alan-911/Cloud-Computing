@@ -1,0 +1,61 @@
+# Cluster entry point: Gateway API, implemented by Envoy Gateway.
+# (ingress-nginx was archived upstream in March 2026; Gateway API is its successor.)
+#
+# Envoy Gateway itself is installed from its release manifest by scripts/k8s-up.sh.
+---
+# Expose the Envoy proxy as a NodePort that kind maps to localhost:8088.
+# kind has no cloud load balancer, so the default LoadBalancer Service would stay pending.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: kind-nodeport
+  namespace: envoy-gateway-system
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        type: NodePort
+        # Envoy Gateway defaults to Local, which only answers on the node running
+        # the proxy pod. kind maps the host port to the control-plane node, so any
+        # node must accept the traffic and forward it: Cluster.
+        externalTrafficPolicy: Cluster
+        patch:
+          type: StrategicMerge
+          value:
+            spec:
+              ports:
+                - port: 80
+                  nodePort: 30080
+      envoyDeployment:
+        replicas: 1
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: kind-nodeport
+    namespace: envoy-gateway-system
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: public
+  namespace: envoy-gateway-system
+spec:
+  gatewayClassName: envoy
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              gateway-access: "true"

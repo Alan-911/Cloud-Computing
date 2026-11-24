@@ -21,7 +21,11 @@ echo "==> Deploying ghcr.io/alan-911/cloud-computing:${IMAGE_TAG} at $(git rev-p
 "${compose[@]}" up -d --remove-orphans --wait --wait-timeout 180
 "${compose[@]}" ps
 
-bash scripts/smoke-test.sh http://localhost
+# The write key is in a root-only file on the data volume (created on first boot).
+if [ -z "${API_KEY:-}" ] && [ -r /data/secrets/api.key ]; then
+    API_KEY="$(cat /data/secrets/api.key)"
+fi
+API_KEY="${API_KEY:-}" bash scripts/smoke-test.sh http://localhost
 
 history_dir=/data
 [ -w "$history_dir" ] || history_dir="$HOME"

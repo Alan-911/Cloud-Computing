@@ -1,0 +1,27 @@
+# Reviewed and accepted Trivy findings. Each entry is scoped to specific files and
+# states why; anything not listed here still fails or reports as usual.
+# Decisions are also recorded in docs/security/threat-model.md.
+misconfigurations:
+  - id: KSV-0125
+    paths:
+      - "kubernetes/base/api.yaml"
+      - "kubernetes/migrate/job.yaml"
+    statement: >-
+      "Untrusted registry": the image is this repository's own GHCR image
+      (ghcr.io/alan-911/cloud-computing), published only by the Release workflow
+      after CI passes, with an SBOM and signed build provenance
+      (gh attestation verify). Trivy simply does not list ghcr.io as trusted by
+      default.
+  - id: KSV-0020
+    paths:
+      - "kubernetes/base/postgres.yaml"
+    statement: >-
+      PostgreSQL runs as UID 70, the postgres user of the official Alpine image.
+      It is non-root (runAsNonRoot), cannot escalate (no capabilities,
+      allowPrivilegeEscalation false, read-only root filesystem, restricted Pod
+      Security). Forcing an arbitrary UID > 10000 with this image is fragile.
+  - id: KSV-0021
+    paths:
+      - "kubernetes/base/postgres.yaml"
+    statement: >-
+      GID 70 for the same reason as KSV-0020 (the image's postgres group).

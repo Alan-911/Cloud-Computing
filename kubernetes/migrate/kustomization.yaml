@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: items
+resources:
+  - job.yaml
+images:
+  - name: ghcr.io/alan-911/cloud-computing
+    newTag: "2.0.0"

@@ -1,0 +1,16 @@
+# Non-secret settings shared by the API and the migration Job.
+# The database password lives in the Secret `db-credentials`, created by
+# scripts/k8s-up.sh from a generated value; it is never committed.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-config
+  namespace: items
+data:
+  APP_ENVIRONMENT: production
+  APP_DEBUG: "false"
+  APP_DB_POOL_SIZE: "5"
+  APP_DB_MAX_OVERFLOW: "5"
+  POSTGRES_DB: app
+  POSTGRES_USER: app
+  DB_HOST: postgres

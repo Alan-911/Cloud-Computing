@@ -15,9 +15,20 @@ variable "name" {
 }
 
 variable "github_repository" {
-  description = "owner/name; cloned onto the host and trusted for deploys."
+  description = "owner/name; cloned onto the host."
   type        = string
   default     = "Alan-911/Cloud-Computing"
+}
+
+variable "github_oidc_subject_prefix" {
+  description = <<-EOT
+    Prefix of the `sub` claim in this repository's GitHub OIDC tokens (immutable
+    subject claims embed the owner and repository IDs). Only Deploy jobs whose
+    token matches <prefix>:environment:<environment> can assume the deploy role.
+    Read it with: gh api repos/OWNER/REPO/actions/oidc/customization/sub
+  EOT
+  type        = string
+  default     = "repo:Alan-911@136555079/Cloud-Computing@1400158294"
 }
 
 # --- Network --------------------------------------------------------------------
@@ -66,13 +77,13 @@ variable "data_volume_gb" {
 variable "app_ref" {
   description = "Git ref checked out on first boot (later deploys choose their own)."
   type        = string
-  default     = "v1.4.0"
+  default     = "v2.0.0"
 }
 
 variable "image_tag" {
   description = "Image tag started on first boot."
   type        = string
-  default     = "1.4.0"
+  default     = "2.0.0"
 }
 
 # --- Cost guard -------------------------------------------------------------------

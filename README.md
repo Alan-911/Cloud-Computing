@@ -1,137 +1,145 @@
 # Cloud-Native Backend Infrastructure
 
-[![CI](https://github.com/Alan-911/Cloud-Computing/actions/workflows/release.yml/badge.svg?branch=develop)](https://github.com/Alan-911/Cloud-Computing/actions/workflows/release.yml)
-[![Security](https://github.com/Alan-911/Cloud-Computing/actions/workflows/security.yml/badge.svg?branch=develop)](https://github.com/Alan-911/Cloud-Computing/actions/workflows/security.yml)
+[![CI](https://github.com/Alan-911/Cloud-Computing/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/Alan-911/Cloud-Computing/actions/workflows/release.yml)
+[![Security](https://github.com/Alan-911/Cloud-Computing/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/Alan-911/Cloud-Computing/actions/workflows/security.yml)
+[![Kubernetes](https://github.com/Alan-911/Cloud-Computing/actions/workflows/kubernetes.yml/badge.svg?branch=develop)](https://github.com/Alan-911/Cloud-Computing/actions/workflows/kubernetes.yml)
+[![Performance](https://github.com/Alan-911/Cloud-Computing/actions/workflows/performance.yml/badge.svg?branch=develop)](https://github.com/Alan-911/Cloud-Computing/actions/workflows/performance.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-A FastAPI items service on PostgreSQL behind an Nginx reverse proxy, being
-developed in phases from a graded cloud-computing assignment into a
-production-oriented backend: tested, containerized, automated, observable and secure.
+A small REST API built to **production standards**: designed, tested, containerised,
+deployed on Kubernetes and AWS, observed, secured and load-tested. Every claim below
+is checked by CI or by a recorded run.
 
-- **Roadmap and status:** [`docs/ROADMAP.md`](docs/ROADMAP.md)
-- **Requirements and architecture:** [`docs/architecture/requirements.md`](docs/architecture/requirements.md)
-- **Database runbook (migrations, backup, restore):** [`docs/runbooks/database.md`](docs/runbooks/database.md)
-- **CI/CD runbook (pipeline, releases, deploy, rollback):** [`docs/runbooks/ci-cd.md`](docs/runbooks/ci-cd.md)
-- **Infrastructure runbook (Terraform, AWS, cost):** [`docs/runbooks/infrastructure.md`](docs/runbooks/infrastructure.md)
-- **Original academic submission:** tag `v1.0-academic`, files in [`docs/academic-submission/`](docs/academic-submission/NOTE.md)
+It started as a graded cloud-computing assignment: one FastAPI file, SQLite and a
+manual EC2 deploy, preserved at tag [`v1.0-academic`](https://github.com/Alan-911/Cloud-Computing/tree/v1.0-academic).
+It was then rebuilt in ten phases, recorded in the [roadmap](docs/ROADMAP.md).
 
+## What this demonstrates
+
+| Area | What's here | Evidence |
+|---|---|---|
+| **Backend** | FastAPI service: layered package, full CRUD, validation, pagination, one error envelope | 120 tests, **99.5% branch coverage**, run on SQLite *and* PostgreSQL |
+| **Data** | PostgreSQL 17, Alembic migrations as the only source of the schema, pooled connections | A drift test fails CI if models and migrations differ; backup and restore drilled |
+| **Containers** | Non-root, read-only filesystem, **zero Linux capabilities**, no pip in the image, multi-arch | Checked inside the running container by CI |
+| **CI/CD** | GitHub Actions: lint, tests, image, smoke test, multi-arch release to GHCR with SBOM and signed provenance; branch protection | All actions pinned to commit SHAs |
+| **Infrastructure as Code** | Terraform: remote state, VPC, EC2, IAM, budget. Deploys over **SSM via GitHub OIDC** (no SSH, no stored keys) | Created, deployed to and destroyed from Terraform alone |
+| **Kubernetes** | Gateway API (Envoy), probes, HPA, PDB, restricted Pod Security, default-deny NetworkPolicies | Zero-downtime rollout under load in CI: **28,177 requests, 0 failed** |
+| **Observability** | JSON logs with request IDs, Prometheus RED metrics, SLO burn-rate alerts with unit tests, Grafana | Alert drill: `ApiDown` fired and cleared on recovery |
+| **Security** | API keys (hashed), TLS 1.2/1.3, rate limits, security headers, CodeQL, Trivy, STRIDE threat model | **0 critical** findings; decisions recorded |
+| **Performance** | k6 SLO test, capacity ramp, load shedding, failure drills | **p95 3–4 ms at 100 req/s**; a killed pod cost **0 requests** |
+
+## Quick start (about 10 minutes)
+
+Requires Docker with the Compose plugin, Git and Bash (on Windows, use Git Bash).
+
+```bash
+git clone https://github.com/Alan-911/Cloud-Computing.git && cd Cloud-Computing
+scripts/setup-env.sh                    # .env with generated passwords and an API key
+docker compose up -d --build --wait     # db -> migrations -> api -> nginx
+scripts/smoke-test.sh                   # 11 checks against http://localhost
 ```
-client ──▶ :80 nginx ──▶ api:8000 FastAPI ──▶ db:5432 PostgreSQL ──▶ pgdata volume
-           (published)    (internal, non-root)   (internal)
-                              ▲
-             migrate ─────────┘  one-shot `alembic upgrade head` before api starts
+
+Then try it:
+
+```bash
+API_KEY=$(sed -n 's/^API_KEY=//p' .env)
+curl -s http://localhost/api/health
+curl -s -X POST http://localhost/api/v1/items -H "X-API-Key: $API_KEY" \
+     -H "Content-Type: application/json" -d '{"name":"hello"}'
+curl -s http://localhost/api/v1/items
+curl -s -X POST http://localhost/api/v1/items -H "Content-Type: application/json" -d '{"name":"x"}'   # 401: no key
 ```
 
-## Status
+Interactive API docs: **http://localhost/api/docs**
 
-| Phase | State |
-|---|---|
-| 00 Repository preparation | Done (project board pending) |
-| 01 Backend engineering | Done |
-| 02 Database engineering | Done |
-| 03 Automated testing | Done |
-| 04 CI/CD | Done |
-| 05 Infrastructure as Code | Built and planned; apply pending |
-| 06–10 | Planned |
+Optional extras:
+
+| Add | Command | Then |
+|---|---|---|
+| Prometheus and Grafana | `docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d --wait` | Grafana at http://127.0.0.1:3000 (`admin` / `GRAFANA_ADMIN_PASSWORD` from `.env`) |
+| HTTPS | `scripts/dev-cert.sh`, then add `-f docker-compose.tls.yml` | `curl --cacert nginx/certs/dev-ca.pem https://localhost/api/health` |
+| Kubernetes | Install [kind](https://kind.sigs.k8s.io/), then `scripts/k8s-up.sh 2.0.0` | http://127.0.0.1:8088/api/health |
+| Tests | `python -m venv .venv`, `pip install -r requirements-dev.txt`, `scripts/test.sh` | Add `--postgres` to run against PostgreSQL |
+
+Stop with `docker compose down`. Add `-v` to also delete the data.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    C([Client]) -->|HTTPS| E["nginx / Envoy Gateway<br/>TLS, rate limits, request IDs"]
+    E --> A["FastAPI API<br/>auth on writes, load shedding,<br/>metrics, JSON logs"]
+    A --> D[("PostgreSQL 17")]
+    M["migrate job<br/>alembic upgrade head"] --> D
+    P[Prometheus] -.->|/metrics| A
+    G[Grafana] -.-> P
+```
+
+The same image runs on Docker Compose (local and EC2) and Kubernetes. Diagrams for
+each environment, the request lifecycle, the pipeline and the design decisions are
+in **[docs/architecture](docs/architecture/README.md)**.
 
 ## API
 
-Base path `/api`. Interactive docs at `/api/docs` (disabled when
-`APP_ENVIRONMENT=production` unless `APP_DEBUG=true`).
-
-| Method | Path | Purpose |
+| Method | Path | Notes |
 |---|---|---|
-| GET | `/api/health/live` | Liveness: the process is up (never touches the database) |
-| GET | `/api/health` | Readiness: version and database reachability, 503 if the database is down (also `/api/health/ready`) |
-| GET | `/api/v1/items?limit=&offset=` | Paginated list with `total` |
-| POST | `/api/v1/items` | Create (201, `Location` header) |
-| GET | `/api/v1/items/{id}` | Read one |
-| PUT | `/api/v1/items/{id}` | Replace |
-| PATCH | `/api/v1/items/{id}` | Partial update |
-| DELETE | `/api/v1/items/{id}` | Delete (204) |
+| GET | `/api/health/live` | Liveness; never touches the database |
+| GET | `/api/health` | Readiness: version and database status, 503 if the database is down |
+| GET | `/api/v1/items?limit=&offset=` | Paginated, with `total` |
+| POST | `/api/v1/items` | **API key**. 201 with `Location` |
+| GET | `/api/v1/items/{id}` | |
+| PUT / PATCH | `/api/v1/items/{id}` | **API key**. Replace / partial update |
+| DELETE | `/api/v1/items/{id}` | **API key**. 204 |
 
-Names are 1–100 characters after trimming and unique regardless of case. Both
-rules are also enforced by the database (`CHECK` constraint and a unique index
-on `lower(name)`). Every error has the same shape:
+- **Errors** always use the same shape: `{"error": {"code", "message", "details"}}`.
+- **Status codes:** `validation_error` 422, `not_found` 404, `conflict` 409, `unauthorized` 401, `rate_limited` 429. Two are temporary, so clients should retry them after `Retry-After`: `overloaded` 503 and `database_unavailable` 503.
+- **Names** are unique regardless of case, enforced by the database.
 
-```json
-{"error": {"code": "not_found", "message": "Item 42 was not found.", "details": {"id": 42}}}
+## Measured results
+
+From the [Performance workflow](docs/benchmarks/README.md) on GitHub runners (4 vCPU):
+
+| Test | Result |
+|---|---|
+| Defined workload: 100 req/s for 3 min, mixed reads and writes | 18,000 requests, **0 failed**, p95 **3.0–4.2 ms** (target < 200 ms), 3 runs |
+| Capacity of one process | ~300–460 req/s served. Beyond that, a fast `503 overloaded`, never timeouts |
+| API pod killed under load (Kubernetes) | **0 failed** of 5,241 requests |
+| Database pod killed under load | Recovered **2.8 s** after PostgreSQL was ready; no API pod restarted; data intact |
+| Rolling update under load (Kubernetes) | 28,177 requests, **0 failed** |
+
+## Repository map
+
+```
+app/              FastAPI service: api/ (HTTP), services/ (rules), models/ + database/ (data), core/ (config, errors, security, observability)
+migrations/       Alembic migrations, the only source of the schema
+tests/            unit/ and integration/ (pytest), performance/ (k6 scripts, traffic probe)
+nginx/            reverse proxy: rate limits, request IDs, HTTP and HTTPS variants
+kubernetes/       kind cluster, Gateway API, Kustomize manifests, migration Job
+infrastructure/   Terraform: bootstrap (state, OIDC) and app (VPC, EC2, IAM)
+monitoring/       Prometheus config, SLO rules and rule tests, Grafana dashboard
+scripts/          setup, smoke test, tests, Kubernetes, drills, backups, keys, certificates
+.github/          workflows: CI, Security, Release, Deploy, Kubernetes, Infrastructure, Performance
+docs/             architecture, runbooks, security, benchmarks, roadmap, academic submission
 ```
 
-Codes: `validation_error` (422), `not_found` (404), `conflict` (409),
-`method_not_allowed` (405), `internal_error` (500).
+## Documentation
 
-## Project layout
+| Topic | Where |
+|---|---|
+| Architecture and design decisions | [docs/architecture](docs/architecture/README.md) |
+| Roadmap and evidence for every phase | [docs/ROADMAP.md](docs/ROADMAP.md) |
+| Benchmarks (load, capacity, drills) | [docs/benchmarks](docs/benchmarks/README.md) |
+| Security guide and STRIDE threat model | [docs/security](docs/security/README.md) |
+| Runbooks: [database](docs/runbooks/database.md), [CI/CD](docs/runbooks/ci-cd.md), [infrastructure](docs/runbooks/infrastructure.md), [Kubernetes](docs/runbooks/kubernetes.md), [observability](docs/runbooks/observability.md), [recovery](docs/runbooks/recovery.md) | `docs/runbooks/` |
+| Changes by release | [CHANGELOG.md](CHANGELOG.md) |
 
-```
-app/
-  api/          routes and dependencies (HTTP only)
-  core/         settings and error handling
-  database/     engine, connection pool, sessions
-  models/       SQLAlchemy tables
-  schemas/      Pydantic request/response models
-  services/     business rules
-  main.py       application factory
-  Dockerfile    built from the repo root
-migrations/     Alembic migrations (the only source of the schema)
-infrastructure/ Terraform: bootstrap (state, OIDC) and app (VPC, EC2, IAM)
-tests/          unit and integration tests
-scripts/        tests, smoke test, host deploy, EC2 setup, database backup and restore
-.github/        CI, security, release and deploy workflows; Dependabot
-nginx/          reverse proxy config
-docs/           roadmap, architecture, runbooks, academic submission
-```
+## Tech stack
 
-## Run with Docker Compose
+Python 3.15 · FastAPI · SQLAlchemy 2 · Alembic · PostgreSQL 17 · Docker · nginx ·
+Kubernetes (kind) · Envoy Gateway · Terraform · AWS (EC2, IAM, SSM, S3) · GitHub
+Actions · Prometheus · Grafana · k6 · pytest · CodeQL · Trivy
 
-```bash
-cp .env.example .env          # then set POSTGRES_PASSWORD
-docker compose up -d --build
-curl -i http://localhost/api/health
-curl -i -X POST http://localhost/api/v1/items -H "Content-Type: application/json" -d '{"name":"alpha"}'
-curl -s http://localhost/api/v1/items
-```
+## License
 
-Only Nginx publishes a port; the API and PostgreSQL are reachable only on the
-Compose network. Data lives in the `pgdata` volume and survives
-`docker compose down` / `up`. Set `APP_DEBUG=true` in `.env` to expose `/api/docs`.
-
-Back up and restore: `scripts/db-backup.sh`, `scripts/db-restore.sh <file>`.
-
-## Run locally without Docker
-
-```bash
-python -m venv .venv
-. .venv/bin/activate                     # Windows: .venv\Scripts\activate
-pip install -r requirements-dev.txt
-export APP_DATABASE_URL=sqlite:///./app.db
-alembic upgrade head
-uvicorn app.main:app --reload            # http://127.0.0.1:8000/api/docs
-```
-
-## Tests
-
-One command runs lint, the format check, and the suite with coverage
-(run it from Git Bash on Windows):
-
-```bash
-scripts/test.sh              # SQLite, no Docker needed
-scripts/test.sh --postgres   # starts and removes a throwaway PostgreSQL 17 container
-scripts/test.sh -- -k service   # extra arguments go to pytest
-```
-
-| Folder | What it covers | Needs a database |
-|---|---|---|
-| `tests/unit/` | Validation rules, the error envelope, config, engine and pool options | No |
-| `tests/integration/` | The service layer, every HTTP endpoint, migrations in both directions, model/migration drift, concurrent duplicate creates | Yes |
-
-The schema is always built by the real migrations. The run fails if branch
-coverage drops below 85% or if any test raises a warning. To point at your own
-database, set `TEST_DATABASE_URL`. That database is wiped, so only use a throwaway one.
-
-## Breaking changes from `v1.0-academic`
-
-- Item routes moved from `/api/items` to `/api/v1/items`.
-- `POST` returns the created item (201) instead of `{"message": "added"}`.
-- `GET` returns `{"items": [...], "total", "limit", "offset"}` with full item objects instead of a list of names.
-- Storage moved from SQLite in the `appdata` volume to PostgreSQL in `pgdata`. Old SQLite data is not migrated; remove the old volume with `docker volume rm cloud-computing_appdata`.
-- Compose now requires a `.env` file with `POSTGRES_PASSWORD`.
+[MIT](LICENSE). The original coursework in `docs/academic-submission/` is kept for
+the record.
