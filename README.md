@@ -26,11 +26,11 @@ It was then rebuilt in ten phases, recorded in the [roadmap](docs/ROADMAP.md).
 Writes need an API key; interactive docs are off in production. The address changes if the
 environment is recreated.
 
-## Architecture at a glance
+## Reference microservices diagram
 
-![Cloud-native backend system overview](docs/images/project-overview.svg)
+![Illustrative event-driven microservices diagram](https://d2ol7oe51mr4n9.cloudfront.net/user_3BjvznL67PSnqP9w6BCX0wqGk5P/db53c6aa-fd8d-4caa-b561-68d736f50570.png)
 
-*Illustrative overview of the API, deployment infrastructure and observability components; consult the architecture documents and workflows for implemented configurations.*
+*Reference illustration supplied for this portfolio. It depicts client apps, microservices, an event backbone, FaaS/stream processing, a data lake, Docker and Kubernetes. **Not all of these components are implemented by the FastAPI backend in this repository**; see the documented [project architecture](docs/architecture/README.md) for the actual system.*
 
 ## What this demonstrates
 
