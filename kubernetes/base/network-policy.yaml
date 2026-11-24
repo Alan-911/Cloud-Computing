@@ -6,6 +6,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny-ingress
+  namespace: items
 spec:
   podSelector: {}
   policyTypes: ["Ingress"]
@@ -14,6 +15,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: api-from-gateway
+  namespace: items
 spec:
   podSelector:
     matchLabels: { app.kubernetes.io/name: api }
@@ -29,6 +31,7 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: postgres-from-app
+  namespace: items
 spec:
   podSelector:
     matchLabels: { app.kubernetes.io/name: postgres }

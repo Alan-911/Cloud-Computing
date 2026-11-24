@@ -75,6 +75,13 @@ Scanner state on `develop` (Phase 08):
 - **Records:** the rationale is in the function's docstring. Dismiss the alert as "won't fix" with this reference.
 - **Re-evaluate if:** keys ever become user-chosen, in which case switch to Argon2id.
 
+**Kubernetes manifests (Trivy misconfig, v2.0.0 review).**
+- **Fixed:** every resource now declares `namespace: items` (KSV-0110), and the api, postgres and migrate containers have CPU limits (KSV-0011).
+- **Accepted, recorded in [`.trivyignore.yaml`](../../.trivyignore.yaml)** (scoped to the named files, each with a statement):
+  - KSV-0125 "untrusted registry" on the api and migrate images. The image is this repository's own GHCR image, published only by the Release workflow after CI, with an SBOM and signed provenance.
+  - KSV-0020/0021 (UID/GID ≤ 10000) on PostgreSQL. UID/GID 70 is the official Alpine image's postgres user. It is non-root, has no capabilities and no privilege escalation, and the pod meets the restricted Pod Security standard.
+- **Re-evaluate if:** the image moves to another registry, or PostgreSQL moves to a managed service or an operator.
+
 **Fixed after the first CodeQL scan:**
 - 9× `actions/unpinned-tag`: every action, first-party included, is now pinned to a commit SHA, and Dependabot keeps the pins current.
 - `py/side-effect-in-assert` in a test.

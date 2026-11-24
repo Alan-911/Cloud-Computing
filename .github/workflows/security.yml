@@ -85,6 +85,7 @@ jobs:
           scan-ref: .
           scanners: vuln,secret,misconfig
           skip-dirs: docs/academic-submission
+          trivyignores: .trivyignore.yaml # reviewed exceptions, each with a statement
           format: sarif
           output: trivy-fs.sarif
       - uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
@@ -100,6 +101,7 @@ jobs:
           scan-ref: .
           scanners: vuln,secret,misconfig
           skip-dirs: docs/academic-submission
+          trivyignores: .trivyignore.yaml # reviewed exceptions, each with a statement
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"

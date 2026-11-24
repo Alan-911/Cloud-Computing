@@ -5,6 +5,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: api-config
+  namespace: items
 data:
   APP_ENVIRONMENT: production
   APP_DEBUG: "false"

@@ -5,6 +5,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: postgres
+  namespace: items
   labels: { app.kubernetes.io/name: postgres }
 spec:
   clusterIP: None # headless: stable DNS name postgres.items.svc
@@ -17,6 +18,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: postgres
+  namespace: items
   labels: { app.kubernetes.io/name: postgres }
 spec:
   serviceName: postgres
@@ -61,7 +63,7 @@ spec:
             periodSeconds: 10
           resources:
             requests: { cpu: 100m, memory: 128Mi }
-            limits: { memory: 512Mi }
+            limits: { cpu: "1", memory: 512Mi }
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
