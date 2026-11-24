@@ -14,6 +14,11 @@ It started as a graded cloud-computing assignment: one FastAPI file, SQLite and 
 manual EC2 deploy, preserved at tag [`v1.0-academic`](https://github.com/Alan-911/Cloud-Computing/tree/v1.0-academic).
 It was then rebuilt in ten phases, recorded in the [roadmap](docs/ROADMAP.md).
 
+**Live demo:** v2.0.0 runs on AWS (EC2 t4g.small, deployed by the Deploy workflow over SSM):
+[`/api/health`](http://44.195.163.234/api/health) · [`/api/v1/items`](http://44.195.163.234/api/v1/items).
+Writes need an API key; interactive docs are off in production. The address changes if the
+environment is recreated.
+
 ## What this demonstrates
 
 | Area | What's here | Evidence |
