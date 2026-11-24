@@ -26,6 +26,12 @@ It was then rebuilt in ten phases, recorded in the [roadmap](docs/ROADMAP.md).
 Writes need an API key; interactive docs are off in production. The address changes if the
 environment is recreated.
 
+## Architecture at a glance
+
+![Cloud-native backend system overview](docs/images/project-overview.svg)
+
+*Illustrative overview of the API, deployment infrastructure and observability components; consult the architecture documents and workflows for implemented configurations.*
+
 ## What this demonstrates
 
 | Area | What's here | Evidence |
