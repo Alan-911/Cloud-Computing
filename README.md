@@ -15,6 +15,7 @@ production-oriented backend: tested, containerized, automated, observable and se
 - **Kubernetes runbook (kind, Gateway API, rollouts):** [`docs/runbooks/kubernetes.md`](docs/runbooks/kubernetes.md)
 - **Observability runbook (logs, metrics, SLOs, alerts):** [`docs/runbooks/observability.md`](docs/runbooks/observability.md)
 - **Security guide and threat model:** [`docs/security/`](docs/security/README.md)
+- **Benchmarks and recovery runbook:** [`docs/benchmarks/`](docs/benchmarks/README.md), [`docs/runbooks/recovery.md`](docs/runbooks/recovery.md)
 - **Original academic submission:** tag `v1.0-academic`, files in [`docs/academic-submission/`](docs/academic-submission/NOTE.md)
 
 ```
@@ -37,7 +38,8 @@ client ──▶ :80 nginx ──▶ api:8000 FastAPI ──▶ db:5432 PostgreS
 | 06 Kubernetes | Done (kind, Gateway API, zero-downtime rollout verified) |
 | 07 Observability and SRE | Done (JSON logs, request IDs, Prometheus, Grafana, SLO alerts, drill) |
 | 08 Security engineering | Done (API keys, TLS, rate limits, headers, hardening, threat model) |
-| 09–10 | Planned |
+| 09 Performance and reliability | Done (k6 SLO test, capacity, load shedding, failure drills) |
+| 10 | Planned |
 
 ## API
 

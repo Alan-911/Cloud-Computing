@@ -324,15 +324,53 @@ acceptance criteria, test evidence, documentation updates.
   - The full zero-downtime rollout with auth enabled could not finish locally. The Docker Desktop VM's disk stalls etcd (`slow fdatasync` over 1 s), and the scheduler and controller-manager then crash-loop.
   - `kind.yaml` now keeps etcd on tmpfs. The rollout check runs in the Kubernetes CI workflow on GitHub's Linux runners.
 - **Bugs found and fixed:**
-  - On Windows, the key script hashed a value ending in ``.
+  - On Windows, the key script hashed a value ending in `
+`.
   - The dev CA lacked `keyUsage`, so Python's strict TLS verification rejected it.
   - nginx needed `CHOWN` to run with a read-only root filesystem.
 - **Open, owner action:** delete the AWS root access keys.
 
 ### Phase 09 — Performance and reliability
-Load tests (`tests/performance/`), p95 baseline, replica scaling, failure
-injection and recovery runbook.
+- [x] `CBE-P09-001` Defined workload `tests/performance/k6/load.js`:
+  - 100 req/s for 3 min through nginx: 60% read, 25% list, 10% create, 5% update
+  - gates on p95 < 200 ms, p99 < 500 ms, and < 0.5% failed requests
+- [x] `CBE-P09-002` Capacity ramp `k6/stress.js` (50 → 800 req/s): per-band latency, shed share and served throughput
+- [x] `CBE-P09-003` Load shedding:
+  - found by the capacity ramp: one process collapsed to 100% timeouts at 600 req/s
+  - in-flight cap (64) with an immediate `503 overloaded` + `Retry-After`
+  - health checks and `/metrics` exempt; shed requests counted in `http_requests_shed_total`
+- [x] `CBE-P09-004` Failure drills `scripts/resilience-drill.sh` (DB restart, API pod kill, DB outage):
+  - each drill has pass criteria
+  - DB outages now return `503 database_unavailable` instead of `500`
+  - Envoy retries connect failures only and ejects failing pods
+  - [recovery runbook](runbooks/recovery.md)
+- [x] `CBE-P09-005` Performance workflow:
+  - runs on clean Linux runners: on dispatch, weekly, and when performance code changes
+  - [benchmark report](benchmarks/README.md)
+
 **Acceptance:** p95 under 200 ms at a defined workload; recovery tested and documented.
+
+**Evidence (GitHub runners, 4 vCPU, 2026-11-23/24):**
+- **Defined workload, 3 runs:** 18,000 requests each, **0 failed**, p95 **3.0–4.2 ms** (p99 ≤ 4.7 ms).
+- **Capacity of one process:** ~300–460 req/s served.
+  - Before shedding: 100% timeouts at 600 req/s.
+  - After: excess requests got a fast 503, there were zero timeouts, and worst p99 was 350 ms.
+- **Drills (all pass):**
+
+  | Drill | Failed | Failure window | Recovery |
+  |---|---|---|---|
+  | Compose DB restart | 16 of 4,950, all 503 | 0.10 s | — |
+  | API pod killed (real kill) | **0** of 5,241 | — | — |
+  | DB pod killed | 108 of 4,507 | 3.95 s | 2.8 s after the DB was Ready (SLO 30 s); no API pod restarts, data survived |
+
+- **Bugs found and fixed during the phase:**
+  - throughput collapse with no load shedding
+  - DB errors returned as 500 instead of 503
+  - a closed-loop probe tripped the rate limiter and faked an 85% failure rate
+  - `kubectl delete --force` faked a zero-failure DB outage and risked two PostgreSQL instances on one volume
+- **Phase 07 open finding, closed:** the 5–7 s stalls didn't occur on Linux (max 26.5 ms over 18,001 requests).
+  - On Docker Desktop, fsync p50 is ~6 ms, and etcd logged `slow fdatasync` over 1 s, which points to VM storage.
+  - kind now keeps etcd on tmpfs.
 
 ### Phase 10 — Portfolio release
 Architecture diagrams, benchmark report, runbooks, README polish, `v2.0.0` release.
