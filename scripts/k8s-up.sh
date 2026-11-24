@@ -4,7 +4,7 @@
 # Running it again with a new tag performs a production-style update:
 # migrations first, then a rolling update of the API.
 #
-#   scripts/k8s-up.sh [image-tag]          # default 1.4.0
+#   scripts/k8s-up.sh [image-tag]          # default 2.0.0
 #   KIND=/path/to/kind scripts/k8s-up.sh   # if kind is not on PATH
 #
 # Afterwards: http://localhost:8088/api/health
@@ -12,7 +12,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-TAG="${1:-1.4.0}"
+TAG="${1:-2.0.0}"
 KIND="${KIND:-kind}"
 CLUSTER=items
 NS=items
@@ -47,7 +47,8 @@ kubectl -n envoy-gateway-system wait --for=condition=Programmed gateway/public -
 
 # --- Application ---------------------------------------------------------------------------
 render() { # $1 = kustomization dir; pins the image tag
-    kubectl kustomize "$1" | sed "s#${IMAGE}:1.4.0#${IMAGE}:${TAG}#g"
+    # Replace whatever tag the manifests pin (kustomization newTag) with TAG.
+    kubectl kustomize "$1" | sed -E "s#(${IMAGE}):[A-Za-z0-9._-]+#\1:${TAG}#g"
 }
 
 say "Applying namespace, config and PostgreSQL"

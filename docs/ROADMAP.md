@@ -373,7 +373,15 @@ acceptance criteria, test evidence, documentation updates.
   - kind now keeps etcd on tmpfs.
 
 ### Phase 10 — Portfolio release
-Architecture diagrams, benchmark report, runbooks, README polish, `v2.0.0` release.
+- [x] `CBE-P10-001` [Architecture docs](architecture/README.md): diagrams of the application, request lifecycle, Compose, Kubernetes, AWS and the pipeline, plus a design-decision table. Every diagram is checked with mermaid-cli.
+- [x] `CBE-P10-002` Benchmark report and runbooks (database, CI/CD, infrastructure, Kubernetes, observability, recovery, security)
+- [x] `CBE-P10-003` README rewritten for reviewers:
+  - what it demonstrates, with evidence
+  - a quick start, measured results and a documentation index
+  - `scripts/setup-env.sh` for one-command local setup
+- [x] `CBE-P10-004` `CHANGELOG.md`, MIT `LICENSE`, version 2.0.0
+- [ ] `CBE-P10-005` Release `v2.0.0`: pull request to `main`, tag, GitHub release
+
 **Acceptance:** a reviewer can clone, run and understand the system in 15 minutes.
 
 ## Success metrics (targets)

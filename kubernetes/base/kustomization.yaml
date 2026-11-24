@@ -16,4 +16,4 @@ resources:
 # so it runs to completion before the Deployment changes.
 images:
   - name: ghcr.io/alan-911/cloud-computing
-    newTag: "1.4.0"
+    newTag: "2.0.0"

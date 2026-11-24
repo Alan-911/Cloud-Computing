@@ -7,7 +7,7 @@
 FROM python:3.15-slim
 
 # Set by the release workflow from the Git tag; local builds report the code default.
-ARG APP_VERSION=1.5.0-local
+ARG APP_VERSION=2.0.0-local
 ARG APP_REVISION=unknown
 LABEL org.opencontainers.image.title="cloud-native-items-api" \
       org.opencontainers.image.version=$APP_VERSION \

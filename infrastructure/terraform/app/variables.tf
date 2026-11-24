@@ -77,13 +77,13 @@ variable "data_volume_gb" {
 variable "app_ref" {
   description = "Git ref checked out on first boot (later deploys choose their own)."
   type        = string
-  default     = "v1.4.0"
+  default     = "v2.0.0"
 }
 
 variable "image_tag" {
   description = "Image tag started on first boot."
   type        = string
-  default     = "1.4.0"
+  default     = "2.0.0"
 }
 
 # --- Cost guard -------------------------------------------------------------------

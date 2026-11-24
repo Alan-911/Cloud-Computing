@@ -14,6 +14,11 @@ set -euo pipefail
 base="${1:-http://localhost}"
 api="${base%/}/api"
 name="smoke-$(date +%s)-$$"
+# Use the key from the repo's .env (scripts/setup-env.sh) when none is given.
+env_file="$(dirname "$0")/../.env"
+if [ -z "${API_KEY:-}" ] && [ -f "$env_file" ]; then
+    API_KEY="$(sed -n 's/^API_KEY=//p' "$env_file" | tr -d '\r')"
+fi
 failures=0
 read -r -a curl_opts <<< "${CURL_OPTS:-}"
 
