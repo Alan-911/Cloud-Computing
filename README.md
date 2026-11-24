@@ -1,5 +1,10 @@
 # Cloud-Native Backend Infrastructure
 
+**Engineering portfolio case study — Backend · Cloud · DevOps · Site Reliability Engineering**
+
+This project documents the progression from a coursework FastAPI API to a cloud infrastructure and reliability implementation. Review the [architecture](docs/architecture/README.md), [development roadmap](docs/ROADMAP.md), [benchmarks](docs/benchmarks/README.md), or [preserved academic baseline](docs/academic-submission/README.md).
+
+
 [![CI](https://github.com/Alan-911/Cloud-Computing/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/Alan-911/Cloud-Computing/actions/workflows/release.yml)
 [![Security](https://github.com/Alan-911/Cloud-Computing/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/Alan-911/Cloud-Computing/actions/workflows/security.yml)
 [![Kubernetes](https://github.com/Alan-911/Cloud-Computing/actions/workflows/kubernetes.yml/badge.svg?branch=develop)](https://github.com/Alan-911/Cloud-Computing/actions/workflows/kubernetes.yml)
@@ -13,6 +18,8 @@ is checked by CI or by a recorded run.
 It started as a graded cloud-computing assignment: one FastAPI file, SQLite and a
 manual EC2 deploy, preserved at tag [`v1.0-academic`](https://github.com/Alan-911/Cloud-Computing/tree/v1.0-academic).
 It was then rebuilt in ten phases, recorded in the [roadmap](docs/ROADMAP.md).
+
+**Deployment note:** The public IP below is an environment-specific demonstration address, not a permanent hosted endpoint. Check availability before using it.
 
 **Live demo:** v2.0.0 runs on AWS (EC2 t4g.small, deployed by the Deploy workflow over SSM):
 [`/api/health`](http://44.195.163.234/api/health) · [`/api/v1/items`](http://44.195.163.234/api/v1/items).
@@ -100,7 +107,10 @@ in **[docs/architecture](docs/architecture/README.md)**.
 - **Status codes:** `validation_error` 422, `not_found` 404, `conflict` 409, `unauthorized` 401, `rate_limited` 429. Two are temporary, so clients should retry them after `Retry-After`: `overloaded` 503 and `database_unavailable` 503.
 - **Names** are unique regardless of case, enforced by the database.
 
-## Measured results
+## Recorded benchmark results
+
+The figures below are **project-reported, workload-specific results** from the linked testing documentation. They should not be interpreted as a performance guarantee for other deployments, hardware, or traffic patterns.
+
 
 From the [Performance workflow](docs/benchmarks/README.md) on GitHub runners (4 vCPU):
 
